@@ -25,6 +25,8 @@ export interface ScheduleDraft {
   readonly channelId: string;
   readonly inviteeUserIds: readonly string[];
   readonly inviteeRoleIds: readonly string[];
+  /** A channel call only people on the list (and hosts) can join. */
+  readonly inviteOnly?: boolean;
 }
 
 export type DraftErrors = Partial<
@@ -56,6 +58,12 @@ export function validateDraft(
   now: number,
   options?: LocalTimeOptions,
   editing = false,
+  /**
+   * The start the call already has. Leaving it alone is always fine, so a call
+   * that has started can still be renamed; only a changed start is checked
+   * against the clock.
+   */
+  unchangedStartsAt?: number,
 ): { readonly errors: DraftErrors; readonly value: ValidDraft | null } {
   const errors: { -readonly [K in keyof DraftErrors]: string } = {};
   const title = draft.title.trim();
@@ -71,6 +79,8 @@ export function validateDraft(
   const startsAt = fromDateTimeLocalValue(draft.startLocal, options);
   if (startsAt === null) {
     errors.start = "Choose a date and time.";
+  } else if (startsAt === unchangedStartsAt) {
+    // Not edited: the server only checks a start that changes.
   } else if (startsAt < now + SCHEDULED_CALL_START_TOLERANCE_MS) {
     errors.start = "Choose a start time in the future.";
   } else if (startsAt > now + SCHEDULED_CALL_MAX_HORIZON_MS) {
@@ -94,6 +104,8 @@ export function validateDraft(
       errors.channel = "Choose where the call happens.";
     }
   }
+  // A standalone room needs someone to invite. An invite-only channel call may
+  // have an empty list: then only hosts and the creator can join.
   if (
     draft.target === "standalone" &&
     draft.inviteeUserIds.length === 0 &&

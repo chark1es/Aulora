@@ -114,3 +114,18 @@ describe("scheduledGuestLinkTtlMs", () => {
     expect(scheduledGuestLinkTtlMs(NOW - 86_400_000, 30, NOW)).toBe(60_000);
   });
 });
+
+describe("validateDraft for open and invite-only calls", () => {
+  it("accepts an empty list for an invite-only channel call", () => {
+    const { errors } = validateDraft({ ...draft, inviteOnly: true }, NOW, NY);
+    expect(errors.invitees).toBeUndefined();
+  });
+
+  it("does not check an unchanged start against the clock, but still checks a changed one", () => {
+    const started = { ...draft, startLocal: "2026-11-09T09:00" };
+    const startsAt = Date.UTC(2026, 10, 9, 14, 0);
+    expect(validateDraft(started, NOW, NY, true).errors.start).toBeDefined();
+    expect(validateDraft(started, NOW, NY, true, startsAt).errors.start).toBeUndefined();
+    expect(validateDraft(started, NOW, NY, true, startsAt + 1).errors.start).toBeDefined();
+  });
+});

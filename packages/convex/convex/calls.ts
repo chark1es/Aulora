@@ -18,6 +18,7 @@ import {
   assertClientId,
   CALL_RETENTION_MS,
   type CallSummary,
+  clearAloneTimer,
   distinctParticipantCount,
   endCall,
   findLiveCall,
@@ -26,6 +27,7 @@ import {
   heldByOtherDevice,
   insertNewCall,
   insertParticipant,
+  isAloneTimeoutExempt,
   loadCallSeats,
   loadVoicePolicy,
   MAX_SIGNAL_BATCH,
@@ -50,7 +52,8 @@ import {
 } from "./lib/permissions";
 import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
 import {
-  assertScheduledCallOpen,
+  assertScheduledCallOpenForUser,
+  consumeWaitingRow,
   requireScheduledCallJoinable,
   requireScheduledCallVisible,
 } from "./lib/scheduledCalls";
@@ -116,8 +119,14 @@ async function requireCallPermissionForUser(
   return { userId, permissions };
 }
 
-/** Verifies a standalone room's scheduled-call visibility/join rules. */
-async function assertStandaloneCallAccess(
+/**
+ * Verifies the scheduled-call rules for any call that carries a
+ * `scheduledCallId`, channel-bound or standalone. Joining runs the open window
+ * (administrators and admitted members may be early), the invite list and the
+ * administrator/creator/admission bypasses, exactly as `scheduledCalls.join`
+ * does. Reading only needs visibility.
+ */
+async function assertScheduledCallAccess(
   ctx: MutationCtx | QueryCtx,
   call: Doc<"calls">,
   userId: string,
@@ -131,7 +140,7 @@ async function assertStandaloneCallAccess(
     throw new ConvexError("This call has ended");
   }
   if (joining) {
-    assertScheduledCallOpen(scheduled);
+    await assertScheduledCallOpenForUser(ctx, userId, scheduled);
     await requireScheduledCallJoinable(ctx, userId, scheduled);
     return;
   }
@@ -168,6 +177,13 @@ export const start = mutation({
     }
 
     const live = await findLiveCall(ctx, args.channelId);
+    // A live channel room that belongs to a scheduled call is subject to that
+    // call's window, invite list and admissions; reusing it is a join. Check
+    // before `prepareSeat` so a refusal never evicts the caller from their
+    // current call.
+    if (live?.scheduledCallId !== undefined) {
+      await assertScheduledCallAccess(ctx, live, userId, true);
+    }
     const { seat, leftCallIds } = await prepareSeat(ctx, {
       userId,
       clientId: args.clientId,
@@ -182,6 +198,9 @@ export const start = mutation({
 
     if (live !== null) {
       await reuseLiveCall(ctx, live, seat, userId, args.clientId);
+      if (live.scheduledCallId !== undefined) {
+        await consumeWaitingRow(ctx, live.scheduledCallId, userId);
+      }
       await syncAloneTimer(ctx, live._id);
       return { callId: live._id, created: false };
     }
@@ -210,7 +229,7 @@ export const join = mutation({
     }
     const { userId } = await requireAuth(ctx);
     await requireCallPermission(ctx, call, Permission.Connect);
-    await assertStandaloneCallAccess(ctx, call, userId, true);
+    await assertScheduledCallAccess(ctx, call, userId, true);
     await assertMayParticipate(ctx, userId);
     const policy = await loadVoicePolicy(ctx);
     if (!policy.enabled) {
@@ -239,6 +258,9 @@ export const join = mutation({
         ringingUserIds: call.ringingUserIds.filter((id) => id !== userId),
         updatedAt: Date.now(),
       });
+    }
+    if (call.scheduledCallId !== undefined) {
+      await consumeWaitingRow(ctx, call.scheduledCallId, userId);
     }
     // A ringing call that just became active with its initiator alone, or a
     // seat added to an already-solo call, starts the solo window here.
@@ -435,6 +457,10 @@ export const stay = mutation({
       return null;
     }
     const now = Date.now();
+    // A scheduled room inside its window has no countdown to extend.
+    if (await isAloneTimeoutExempt(ctx, call, now)) {
+      return null;
+    }
     const timeoutMs = await aloneTimeoutMs(ctx);
     const deadline = now + timeoutMs;
     // A press just after arming would move the deadline by milliseconds.
@@ -485,6 +511,10 @@ export const enforceAlone = internalMutation({
         call.aloneDeadline !== undefined &&
         call.aloneDeadline <= Date.now()
       ) {
+        if (await isAloneTimeoutExempt(ctx, call)) {
+          await clearAloneTimer(ctx, call);
+          return null;
+        }
         await endCall(ctx, call, { endedReason: "alone" });
       }
       return null;
@@ -511,6 +541,11 @@ export const enforceAlone = internalMutation({
       return null;
     }
     const now = Date.now();
+    // A scheduled room still inside its window is never ended for being solo.
+    if (await isAloneTimeoutExempt(ctx, current, now)) {
+      await clearAloneTimer(ctx, current);
+      return null;
+    }
     if (now < current.aloneDeadline) {
       // Same window, fired a hair early: wait out the remainder with the one
       // tracked job instead of relying on the 30s sweep.
@@ -648,7 +683,7 @@ export const get = query({
     }
     const { userId } = await requireAuth(ctx);
     if (call.channelId === undefined) {
-      await assertStandaloneCallAccess(ctx, call, userId, false);
+      await assertScheduledCallAccess(ctx, call, userId, false);
     } else {
       await requireChannelAccess(ctx, call.channelId, Permission.ViewChannel);
     }

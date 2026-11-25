@@ -53,6 +53,9 @@ export interface EditableScheduledCall {
   readonly channelId: string | null;
   readonly inviteeUserIds: readonly string[];
   readonly inviteeRoleIds: readonly string[];
+  /** Absent on a server from before invite-only channel calls. */
+  readonly inviteOnly?: boolean;
+  readonly status?: "scheduled" | "open" | "ended" | "cancelled";
 }
 
 export interface ScheduleCallDialogProps {
@@ -105,6 +108,7 @@ function initialDraft(editing: EditableScheduledCall | null, now: number): Sched
       // A bot invited before bots were excluded is dropped, so saving works.
       inviteeUserIds: editing.inviteeUserIds.filter((id) => !isBotUserId(id)),
       inviteeRoleIds: editing.inviteeRoleIds,
+      inviteOnly: editing.inviteOnly === true,
     };
   }
   return {
@@ -117,6 +121,7 @@ function initialDraft(editing: EditableScheduledCall | null, now: number): Sched
     channelId: "",
     inviteeUserIds: [],
     inviteeRoleIds: [],
+    inviteOnly: false,
   };
 }
 
@@ -147,7 +152,16 @@ export function ScheduleCallDialog(props: ScheduleCallDialogProps) {
   const zone = viewerTimeZone();
   const isEditing = editing !== null;
   const offersGuestLink = !isEditing && canCreateGuestLinks(permissions, guestCallsEnabled);
-  const { errors, value } = validateDraft(draft, Date.now(), undefined, isEditing);
+  const { errors, value } = validateDraft(
+    draft,
+    Date.now(),
+    undefined,
+    isEditing,
+    editing?.startsAt,
+  );
+  const isOpen = editing?.status === "open";
+  const inviteOnlyChannel = draft.target === "channel" && draft.inviteOnly === true;
+  const showInvitees = draft.target === "standalone" || inviteOnlyChannel;
 
   const channelOptions = props.channels
     .filter((channel) => CALL_CHANNEL_KINDS.has(channel.kind))
@@ -208,7 +222,16 @@ export function ScheduleCallDialog(props: ScheduleCallDialogProps) {
                 inviteeUserIds: [...draft.inviteeUserIds],
                 inviteeRoleIds: [...draft.inviteeRoleIds],
               }
-            : {}),
+            : draft.inviteOnly === true
+              ? {
+                  inviteOnly: true,
+                  inviteeUserIds: [...draft.inviteeUserIds],
+                  inviteeRoleIds: [...draft.inviteeRoleIds],
+                }
+              : // Only say so when switching it off; an older server has no field.
+                editing.inviteOnly === true
+                ? { inviteOnly: false }
+                : {}),
         });
         return null;
       }
@@ -223,7 +246,16 @@ export function ScheduleCallDialog(props: ScheduleCallDialogProps) {
               inviteeUserIds: [...draft.inviteeUserIds],
               inviteeRoleIds: [...draft.inviteeRoleIds],
             }
-          : { channelId: draft.channelId as never }),
+          : {
+              channelId: draft.channelId as never,
+              ...(draft.inviteOnly === true
+                ? {
+                    inviteOnly: true,
+                    inviteeUserIds: [...draft.inviteeUserIds],
+                    inviteeRoleIds: [...draft.inviteeRoleIds],
+                  }
+                : {}),
+            }),
       });
       if (!wantGuestLink) {
         return null;
@@ -298,6 +330,12 @@ export function ScheduleCallDialog(props: ScheduleCallDialogProps) {
           save();
         }}
       >
+        {isOpen && (
+          <Text tone="muted" size="sm" data-testid="schedule-open-note">
+            This call is open. Changes apply right away, and moving the start time keeps the room
+            running for anyone already in it.
+          </Text>
+        )}
         <Input
           label="Title"
           value={draft.title}
@@ -383,8 +421,8 @@ export function ScheduleCallDialog(props: ScheduleCallDialogProps) {
           />
         )}
 
-        {draft.target === "channel" ? (
-          isEditing ? (
+        {draft.target === "channel" &&
+          (isEditing ? (
             <Text tone="muted" size="sm">
               This call lives in{" "}
               <strong className="text-text">
@@ -402,11 +440,25 @@ export function ScheduleCallDialog(props: ScheduleCallDialogProps) {
               }}
               options={channelOptions}
             />
-          )
-        ) : (
+          ))}
+        {draft.target === "channel" && (
+          <Checkbox
+            checked={draft.inviteOnly === true}
+            onChange={(inviteOnly) => {
+              set({ inviteOnly });
+            }}
+            label="Invite only"
+            description="Only you, administrators and the people you list can join. Anyone else in the channel can ask to be let in."
+          />
+        )}
+        {showInvitees && (
           <Field
             label="Invite"
-            hint="Standalone rooms are only open to the people and roles you list, and to you."
+            hint={
+              draft.target === "standalone"
+                ? "Standalone rooms are only open to the people and roles you list, and to you."
+                : "Leave it empty to let in only you and administrators. Anyone else can ask a host to let them in."
+            }
             {...fieldError("invitees")}
           >
             <PeoplePicker

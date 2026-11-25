@@ -71,6 +71,7 @@ import {
 } from "./lib/permissions";
 import { enforceRateLimit, requestIp } from "./lib/rateLimit";
 import {
+  claimChannelRoomForScheduled,
   liveCallOnChannel,
   requireScheduledCallVisible,
   resolveScheduledLiveCall,
@@ -1165,10 +1166,8 @@ export const admit = mutation({
         scheduled.channelId !== undefined &&
         call.channelId === scheduled.channelId
       ) {
-        await ctx.db.patch(call._id, {
-          scheduledCallId: scheduled._id,
-          updatedAt: Date.now(),
-        });
+        // An invite-only meeting also drops members who may not join it.
+        await claimChannelRoomForScheduled(ctx, call, scheduled);
         await ctx.db.patch(scheduled._id, {
           callId: call._id,
           ...(scheduled.status === "scheduled" ? { status: "open" as const } : {}),

@@ -2,6 +2,7 @@ import { hasPermission, Permission, scheduledCallNotOpen } from "@aulora/core";
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { loadCallSeats, removeParticipant } from "./calls";
 import { requireChannelAccessForUser } from "./channels";
 import {
   categoryOverridesFor,
@@ -21,6 +22,9 @@ import {
  */
 
 type ReadCtx = QueryCtx | MutationCtx;
+
+/** Waiting-room rows deleted per batch when a call ends or is cancelled. */
+const WAITING_DELETE_BATCH = 100;
 
 /** The live active or ringing call on a channel, if any. */
 export async function liveCallOnChannel(
@@ -101,7 +105,28 @@ async function userRoles(ctx: ReadCtx, userId: string): Promise<readonly string[
   return member?.roleIds ?? [];
 }
 
-/** True when the user is the creator, an invitee or holds an invited role. */
+/** Pure form of {@link isStandaloneInvitee}, for callers that already hold the roles. */
+export function isListedWithRoles(
+  scheduled: Doc<"scheduledCalls">,
+  userId: string,
+  roleIds: readonly string[],
+): boolean {
+  return (
+    scheduled.createdBy === userId ||
+    scheduled.inviteeUserIds.includes(userId) ||
+    roleIds.some((roleId) => scheduled.inviteeRoleIds.includes(roleId))
+  );
+}
+
+/** The user's role refs, read once so a list can reuse them for every row. */
+export async function viewerRoleIds(ctx: ReadCtx, userId: string): Promise<readonly string[]> {
+  return await userRoles(ctx, userId);
+}
+
+/**
+ * True when the user is the creator, an invitee or holds an invited role. Used
+ * for standalone rooms and for channel calls that are invite-only.
+ */
 export async function isStandaloneInvitee(
   ctx: ReadCtx,
   scheduled: Doc<"scheduledCalls">,
@@ -113,8 +138,7 @@ export async function isStandaloneInvitee(
   if (scheduled.inviteeRoleIds.length === 0) {
     return false;
   }
-  const roles = await userRoles(ctx, userId);
-  return roles.some((roleId) => scheduled.inviteeRoleIds.includes(roleId));
+  return isListedWithRoles(scheduled, userId, await userRoles(ctx, userId));
 }
 
 /** Channel permissions for a channel-bound target, or workspace permissions. */
@@ -174,27 +198,158 @@ export async function requireScheduledCallVisible(
   throw new ConvexError("You cannot see this scheduled call");
 }
 
-/** Throws unless the viewer may join a scheduled call. */
-export async function requireScheduledCallJoinable(
+/**
+ * A standalone room is always invite-only; a channel call is invite-only when
+ * its creator turned the option on. Absent `inviteOnly` means false.
+ */
+export function isInviteOnly(scheduled: Doc<"scheduledCalls">): boolean {
+  return scheduled.channelId === undefined || scheduled.inviteOnly === true;
+}
+
+/** The viewer's waiting-room row for one call, if any. */
+export async function findWaitingRow(
+  ctx: ReadCtx,
+  scheduledCallId: Id<"scheduledCalls">,
+  userId: string,
+): Promise<Doc<"scheduledCallWaiting"> | null> {
+  return await ctx.db
+    .query("scheduledCallWaiting")
+    .withIndex("by_call_user", (q) => q.eq("scheduledCallId", scheduledCallId).eq("userId", userId))
+    .first();
+}
+
+/** A live admission: a host let this member in, and it has not lapsed. */
+export async function findAdmission(
+  ctx: ReadCtx,
+  scheduledCallId: Id<"scheduledCalls">,
+  userId: string,
+  now: number = Date.now(),
+): Promise<Doc<"scheduledCallWaiting"> | null> {
+  const row = await findWaitingRow(ctx, scheduledCallId, userId);
+  return row !== null && row.status === "admitted" && row.expiresAt > now ? row : null;
+}
+
+/**
+ * Throws unless the user holds `Connect` (workspace, and the channel for a
+ * channel-bound call) and the call can still be joined. Returns the user's
+ * workspace permissions so callers can read the administrator bit.
+ */
+export async function requireScheduledCallConnect(
   ctx: ReadCtx,
   userId: string,
   scheduled: Doc<"scheduledCalls">,
-): Promise<void> {
+): Promise<bigint> {
   if (scheduled.status === "cancelled" || scheduled.status === "ended") {
     throw new ConvexError("This scheduled call has ended");
   }
   const context = await loadPermissionContext(ctx, userId);
-  if (!hasPermission(workspacePermissions(context), Permission.Connect)) {
+  const workspace = workspacePermissions(context);
+  if (!hasPermission(workspace, Permission.Connect)) {
     throw new ConvexError("Missing permission");
   }
   if (scheduled.channelId !== undefined) {
     await requireChannelAccessForUser(ctx, userId, scheduled.channelId, Permission.Connect);
+  }
+  return workspace;
+}
+
+export interface ScheduledCallStanding {
+  readonly administrator: boolean;
+  /** The creator, a listed invitee or a member of an invited role. */
+  readonly listed: boolean;
+  /** A host already let the member in. */
+  readonly admitted: boolean;
+  readonly inviteOnly: boolean;
+  /** May join without knocking, ignoring the open window. */
+  readonly allowed: boolean;
+}
+
+/** Why (or whether) a member may join, without throwing. */
+export async function scheduledCallStanding(
+  ctx: ReadCtx,
+  userId: string,
+  scheduled: Doc<"scheduledCalls">,
+  workspace: bigint,
+  now: number = Date.now(),
+): Promise<ScheduledCallStanding> {
+  const administrator = isAdministrator(workspace);
+  const inviteOnly = isInviteOnly(scheduled);
+  const listed = await isStandaloneInvitee(ctx, scheduled, userId);
+  const admitted = (await findAdmission(ctx, scheduled._id, userId, now)) !== null;
+  return {
+    administrator,
+    listed,
+    admitted,
+    inviteOnly,
+    allowed: !inviteOnly || administrator || listed || admitted,
+  };
+}
+
+/**
+ * Throws unless the viewer may join a scheduled call. `Connect` is required of
+ * everyone. A call that is not invite-only admits any channel member; an
+ * invite-only call (every standalone room) admits administrators, the creator,
+ * invitees and members a host admitted from the waiting room.
+ */
+export async function requireScheduledCallJoinable(
+  ctx: ReadCtx,
+  userId: string,
+  scheduled: Doc<"scheduledCalls">,
+  now: number = Date.now(),
+): Promise<void> {
+  const workspace = await requireScheduledCallConnect(ctx, userId, scheduled);
+  if (!isInviteOnly(scheduled) || isAdministrator(workspace)) {
     return;
   }
   if (await isStandaloneInvitee(ctx, scheduled, userId)) {
     return;
   }
-  throw new ConvexError("You are not invited to this call");
+  if ((await findAdmission(ctx, scheduled._id, userId, now)) !== null) {
+    return;
+  }
+  throw new ConvexError(
+    scheduled.channelId === undefined
+      ? "You are not invited to this call"
+      : "This call is invite-only. Ask a host to let you in.",
+  );
+}
+
+/**
+ * Claims an unassociated channel room for a scheduled meeting. For an
+ * invite-only meeting, members already seated who may not join it lose their
+ * seat (they can still ask to join from the waiting room). Guests stay: a guest
+ * link is the sanctioned way into an invite-only call. Returns the removed
+ * user ids so callers can re-sync timers.
+ */
+export async function claimChannelRoomForScheduled(
+  ctx: MutationCtx,
+  call: Doc<"calls">,
+  scheduled: Doc<"scheduledCalls">,
+  now: number = Date.now(),
+): Promise<readonly string[]> {
+  await ctx.db.patch(call._id, { scheduledCallId: scheduled._id, updatedAt: now });
+  if (!isInviteOnly(scheduled)) {
+    return [];
+  }
+  const removed: string[] = [];
+  const seats = await loadCallSeats(ctx, call._id);
+  for (const userId of new Set(
+    seats.filter((seat) => seat.guestId === undefined).map((seat) => seat.userId),
+  )) {
+    const context = await loadPermissionContext(ctx, userId);
+    const standing = await scheduledCallStanding(
+      ctx,
+      userId,
+      scheduled,
+      workspacePermissions(context),
+      now,
+    );
+    if (!standing.allowed) {
+      await removeParticipant(ctx, call, userId);
+      removed.push(userId);
+    }
+  }
+  return removed;
 }
 
 /** Enforces the server-side open window. The UI timer is only cosmetic. */
@@ -207,6 +362,87 @@ export function assertScheduledCallOpen(
     return;
   }
   throw new ConvexError(scheduledCallNotOpen(scheduled.startsAt, scheduled.openLeadMinutes));
+}
+
+/**
+ * True when the permissions include `Administrator` (held through a role, or
+ * implied by workspace ownership, which resolves to every permission). The bit
+ * is read directly because `hasPermission` short-circuits for administrators.
+ */
+export function isAdministrator(permissions: bigint): boolean {
+  return (permissions & Permission.Administrator) !== 0n;
+}
+
+/**
+ * Enforces the open window for one user. A workspace administrator, or a member
+ * a host let in from the waiting room, may join before it; everyone else,
+ * guests included, gets the typed `ScheduledCallNotOpen` error. Returns
+ * `early: true` when the join happens before `opensAt`, so callers can leave the
+ * call `scheduled` for everyone else.
+ */
+export async function assertScheduledCallOpenForUser(
+  ctx: ReadCtx,
+  userId: string,
+  scheduled: Doc<"scheduledCalls">,
+  now: number = Date.now(),
+): Promise<{ readonly early: boolean }> {
+  const opensAt = scheduled.startsAt - scheduled.openLeadMinutes * 60_000;
+  // A call that was already open stays joinable even if an edit moved its
+  // start later, so its live room does not turn people away.
+  if (scheduled.status === "open" || now >= opensAt) {
+    return { early: false };
+  }
+  const context = await loadPermissionContext(ctx, userId);
+  if (isAdministrator(workspacePermissions(context))) {
+    return { early: true };
+  }
+  if ((await findAdmission(ctx, scheduled._id, userId, now)) !== null) {
+    return { early: true };
+  }
+  assertScheduledCallOpen(scheduled, now);
+  return { early: true };
+}
+
+/**
+ * Removes the member's pending waiting-room row once they are in. An admitted
+ * row stays so a rejoin after a disconnect keeps working while the call is live.
+ */
+export async function consumeWaitingRow(
+  ctx: MutationCtx,
+  scheduledCallId: Id<"scheduledCalls">,
+  userId: string,
+): Promise<void> {
+  const row = await findWaitingRow(ctx, scheduledCallId, userId);
+  if (row !== null && row.status !== "admitted") {
+    await ctx.db.delete(row._id);
+  }
+}
+
+/**
+ * Deletes one bounded batch of a call's waiting-room rows. Returns true when a
+ * batch was full, so the caller can schedule a continuation.
+ */
+export async function deleteWaitingRows(
+  ctx: MutationCtx,
+  scheduledCallId: Id<"scheduledCalls">,
+  batch: number = WAITING_DELETE_BATCH,
+): Promise<boolean> {
+  let more = false;
+  for (const status of ["waiting", "admitted", "declined"] as const) {
+    const rows = await ctx.db
+      .query("scheduledCallWaiting")
+      .withIndex("by_call_status", (q) =>
+        q.eq("scheduledCallId", scheduledCallId).eq("status", status),
+      )
+      .take(batch);
+    for (const row of rows) {
+      await ctx.db.delete(row._id);
+    }
+    if (rows.length === batch) {
+      more = true;
+    }
+  }
+  return more;
 }
 
 /**

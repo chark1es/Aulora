@@ -276,7 +276,7 @@ describe("addon permission gating", () => {
       cancel: true,
     });
     expect(canEditScheduledCall({ canManage: true, status: "open" })).toEqual({
-      edit: false,
+      edit: true,
       cancel: true,
     });
     expect(canEditScheduledCall({ canManage: true, status: "ended" })).toEqual({

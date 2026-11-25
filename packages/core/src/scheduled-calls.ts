@@ -70,3 +70,28 @@ export function clampOpenLeadMinutes(value: number): number {
   }
   return Math.min(SCHEDULED_CALL_MAX_OPEN_LEAD_MINUTES, Math.max(0, Math.trunc(value)));
 }
+
+/** A call without a set length is treated as ending this long after it starts. */
+export const SCHEDULED_CALL_DEFAULT_WINDOW_MINUTES = 240;
+
+/** Server-clock time at which a scheduled call's window ends. */
+export function scheduledCallEndsAt(startsAt: number, durationMinutes: number | undefined): number {
+  return startsAt + (durationMinutes ?? SCHEDULED_CALL_DEFAULT_WINDOW_MINUTES) * 60_000;
+}
+
+/** Member waiting room for a scheduled call. */
+export type ScheduledWaitingKind = "early" | "knock";
+export type ScheduledWaitingStatus = "waiting" | "admitted" | "declined";
+
+/** Members that may wait for one call at once. */
+export const SCHEDULED_WAITING_MAX_PENDING = 25;
+/** Admitted rows kept per call, so a rejoin after a disconnect keeps working. */
+export const SCHEDULED_WAITING_MAX_ADMITTED = 100;
+/** How long an unanswered knock stays in the waiting room. */
+export const SCHEDULED_WAITING_KNOCK_TTL_MS = 10 * 60_000;
+/** Longest an early arrival waits before they have to ask again. */
+export const SCHEDULED_WAITING_EARLY_MAX_MS = 12 * 60 * 60_000;
+/** After a decline the member cannot ask again for this long. */
+export const SCHEDULED_WAITING_DECLINE_COOLDOWN_MS = 60_000;
+/** Rows outlive the call window by this much before the sweep prunes them. */
+export const SCHEDULED_WAITING_GRACE_MS = 10 * 60_000;

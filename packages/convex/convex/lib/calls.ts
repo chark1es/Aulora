@@ -1,4 +1,4 @@
-import { GUEST_SIGNAL_ACK_MAX, transcriptionSpeakerKey } from "@aulora/core";
+import { GUEST_SIGNAL_ACK_MAX, scheduledCallEndsAt, transcriptionSpeakerKey } from "@aulora/core";
 import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -346,11 +346,51 @@ export async function scheduleAloneJob(
   await ctx.db.patch(callId, { aloneJobId: jobId });
 }
 
-/** Arms (or re-arms) the solo-call deadline and replaces its enforcement job. */
+/**
+ * True while a call belongs to a scheduled call that is still inside its
+ * window (not cancelled or ended, and before `startsAt + duration`, or four
+ * hours when no length was set, the same end `scheduledCalls.sweep` uses). Such
+ * a room never runs the solo-call timeout: its host may wait for the others for
+ * as long as the window lasts, and the sweep closes the room afterwards.
+ *
+ * One `db.get` of the scheduled row, and none for an ordinary call.
+ */
+export async function isAloneTimeoutExempt(
+  ctx: ReadCtx,
+  call: Doc<"calls">,
+  now: number = Date.now(),
+): Promise<boolean> {
+  if (call.scheduledCallId === undefined) {
+    return false;
+  }
+  const scheduled = await ctx.db.get(call.scheduledCallId);
+  if (scheduled === null || scheduled.status === "cancelled" || scheduled.status === "ended") {
+    return false;
+  }
+  return now < scheduledCallEndsAt(scheduled.startsAt, scheduled.durationMinutes);
+}
+
+/**
+ * Arms (or re-arms) the solo-call deadline and replaces its enforcement job. An
+ * exempt scheduled room clears any existing window instead.
+ */
 export async function armAloneTimer(
   ctx: MutationCtx,
   call: Doc<"calls">,
   now: number = Date.now(),
+  timeoutMs?: number,
+): Promise<void> {
+  if (await isAloneTimeoutExempt(ctx, call, now)) {
+    await clearAloneTimer(ctx, call);
+    return;
+  }
+  await startAloneWindow(ctx, call, now, timeoutMs);
+}
+
+async function startAloneWindow(
+  ctx: MutationCtx,
+  call: Doc<"calls">,
+  now: number,
   timeoutMs?: number,
 ): Promise<void> {
   const windowMs = timeoutMs ?? (await aloneTimeoutMs(ctx));
@@ -369,7 +409,8 @@ export async function armAloneTimer(
   });
 }
 
-async function clearAloneTimer(ctx: MutationCtx, call: Doc<"calls">): Promise<void> {
+/** Cancels the solo window and its job. A call that already ended keeps its report. */
+export async function clearAloneTimer(ctx: MutationCtx, call: Doc<"calls">): Promise<void> {
   // An ended call keeps its window on purpose so the notice can name the
   // configured duration. A late leave or a duplicate enforcement must not
   // erase it.
@@ -420,8 +461,14 @@ export async function syncAloneState(
     await clearAloneTimer(ctx, call);
     return;
   }
+  // A scheduled room inside its window never times out for being solo, and a
+  // window armed earlier (or by an older release) is cleared here.
+  if (await isAloneTimeoutExempt(ctx, call, now)) {
+    await clearAloneTimer(ctx, call);
+    return;
+  }
   if (call.aloneSince === undefined || call.aloneDeadline === undefined) {
-    await armAloneTimer(ctx, call, now);
+    await startAloneWindow(ctx, call, now);
     return;
   }
   if (call.aloneDeadline <= now) {
