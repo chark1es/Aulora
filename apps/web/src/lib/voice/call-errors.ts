@@ -1,4 +1,11 @@
+import { callRefusalMessage } from "@aulora/core";
+
 export function messageOf(error: unknown): string {
+  // A refused scheduled-call join carries the server's own wording.
+  const refusal = callRefusalMessage(error);
+  if (refusal !== null) {
+    return refusal;
+  }
   if (error instanceof Error && error.message.length > 0) {
     return error.message;
   }

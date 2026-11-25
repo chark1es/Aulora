@@ -1,5 +1,6 @@
 import {
   type ChannelSummary,
+  callRefusalMessage,
   canCreateGuestLinks,
   canEditScheduledCall,
   canScheduleCalls,
@@ -10,6 +11,7 @@ import {
   groupByLocalDay,
   SCHEDULED_CALL_LIST_LIMIT,
   type ScheduledCallStatus,
+  type ScheduledJoinState,
   scheduledJoinState,
   splitScheduledCalls,
   viewerTimeZone,
@@ -27,12 +29,20 @@ import {
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
+import {
+  type MyWaiting,
+  type RowMode,
+  rowMode,
+  WAITING_WATCH_WINDOW_MS,
+  waitingByCall,
+} from "../../lib/scheduled/waiting";
 import type { RoleView } from "../../lib/workspace-admin";
 import { useVoice } from "../../providers/VoiceProvider";
 import { AddonBoundary } from "../addons/AddonBoundary";
 import type { MemberEntry } from "../chat/MembersPanel";
 import { GuestLinkDialog } from "../voice/InviteGuestDialog";
 import { type EditableScheduledCall, ScheduleCallDialog } from "./ScheduleCallDialog";
+import { RowWaitingControls } from "./ScheduledWaiting";
 import { useNow } from "./use-now";
 
 export interface ScheduledCallsViewProps {
@@ -62,6 +72,12 @@ interface ScheduledCall {
   readonly callId: string | null;
   readonly canManage: boolean;
   readonly canJoin: boolean;
+  /** Administrators may join before the open window; absent on older servers. */
+  readonly canJoinEarly?: boolean;
+  /** Waiting-room fields; absent on a server from before the waiting room. */
+  readonly inviteOnly?: boolean;
+  readonly invited?: boolean;
+  readonly canManageWaiting?: boolean;
 }
 
 /** The Scheduled tab: upcoming and past calls, in the viewer’s own time zone. */
@@ -84,6 +100,8 @@ function ScheduledCallsBody(props: ScheduledCallsViewProps) {
   const calls = useQuery(api.scheduledCalls.list, { limit: SCHEDULED_CALL_LIST_LIMIT }) as
     | readonly ScheduledCall[]
     | undefined;
+  const mine = useQuery(api.scheduledCalls.mine, {}) as readonly MyWaiting[] | undefined;
+  const waiting = waitingByCall(mine);
   const cancel = useMutation(api.scheduledCalls.cancel);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [showPast, setShowPast] = useState(false);
@@ -164,6 +182,7 @@ function ScheduledCallsBody(props: ScheduledCallsViewProps) {
                 title="Upcoming"
                 emptyText="Nothing coming up."
                 groups={upcomingGroups}
+                waiting={waiting}
                 now={now}
                 guestLinks={canCreateGuestLinks(permissions, guestCallsEnabled)}
                 titles={props.titles}
@@ -193,6 +212,7 @@ function ScheduledCallsBody(props: ScheduledCallsViewProps) {
                   {showPast && (
                     <CallSection
                       groups={pastGroups}
+                      waiting={waiting}
                       now={now}
                       guestLinks={false}
                       titles={props.titles}
@@ -286,6 +306,7 @@ function CallSection(props: {
   readonly title?: string;
   readonly emptyText?: string;
   readonly groups: ReturnType<typeof groupByLocalDay<ScheduledCall>>;
+  readonly waiting: ReadonlyMap<string, MyWaiting>;
   readonly now: number;
   readonly guestLinks: boolean;
   readonly titles: ReadonlyMap<string, string>;
@@ -309,7 +330,7 @@ function CallSection(props: {
           <h3 className="text-[12px] font-semibold text-text">{group.label}</h3>
           <ul className="divide-y divide-border/60 rounded-[12px] border border-border bg-surface-1">
             {group.items.map((call) => (
-              <CallRow key={call.id} call={call} {...props} />
+              <CallRow key={call.id} call={call} {...props} waiting={props.waiting.get(call.id)} />
             ))}
           </ul>
         </div>
@@ -321,6 +342,7 @@ function CallSection(props: {
 function CallRow({
   call,
   now,
+  waiting,
   guestLinks,
   titles,
   onEdit,
@@ -329,6 +351,7 @@ function CallRow({
 }: {
   readonly call: ScheduledCall;
   readonly now: number;
+  readonly waiting: MyWaiting | undefined;
   readonly guestLinks: boolean;
   readonly titles: ReadonlyMap<string, string>;
   readonly onEdit: (call: ScheduledCall) => void;
@@ -336,15 +359,29 @@ function CallRow({
   readonly onGuest: (call: ScheduledCall) => void;
 }) {
   const voice = useVoice();
+  const enter = useMutation(api.scheduledCalls.enter);
+  const leave = useMutation(api.scheduledCalls.leave);
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
   const state = scheduledJoinState(call, now);
+  const mode = rowMode(call, waiting, now);
   const actions = canEditScheduledCall(call);
   const where =
     call.channelId !== null
       ? (titles.get(call.channelId) ?? "A channel")
       : `${call.inviteeUserIds.length + call.inviteeRoleIds.length} invited`;
   const hintId = `scheduled-hint-${call.id}`;
+  const watchWaiting =
+    call.canManageWaiting === true &&
+    (call.status === "open" || call.opensAt - now <= WAITING_WATCH_WINDOW_MS) &&
+    (call.status === "open" || call.status === "scheduled");
+
+  const fail = (cause: unknown, fallback: string) => {
+    setJoinError(
+      callRefusalMessage(cause) ??
+        (cause instanceof Error && cause.message.length > 0 ? cause.message : fallback),
+    );
+  };
 
   const join = () => {
     setJoining(true);
@@ -361,6 +398,33 @@ function CallRow({
       });
   };
 
+  /** Wait in (or ask into) the waiting room; joins straight away when allowed. */
+  const knock = () => {
+    setJoining(true);
+    setJoinError(null);
+    void enter({ scheduledCallId: call.id as never })
+      .then((result) => {
+        if (result.state === "join") {
+          join();
+        } else if (result.state === "declined") {
+          setJoinError("A host declined your request. You can ask again in a minute.");
+        }
+      })
+      .catch((cause: unknown) => {
+        fail(cause, "Could not ask to join. Try again.");
+      })
+      .finally(() => {
+        setJoining(false);
+      });
+  };
+
+  const stopWaiting = () => {
+    setJoinError(null);
+    void leave({ scheduledCallId: call.id as never }).catch((cause: unknown) => {
+      fail(cause, "Could not leave the waiting room. Try again.");
+    });
+  };
+
   return (
     <li className="flex flex-col gap-2 px-4 py-3" data-testid={`scheduled-call-${call.id}`}>
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
@@ -370,6 +434,7 @@ function CallRow({
             {call.status === "open" && <Badge tone="success">Open now</Badge>}
             {call.status === "cancelled" && <Badge tone="danger">Cancelled</Badge>}
             {call.status === "ended" && <Badge>Ended</Badge>}
+            {call.inviteOnly === true && call.channelId !== null && <Badge>Invite only</Badge>}
           </div>
           <p className="mt-0.5 text-[12.5px] tabular-nums text-text-muted">
             {formatCallTimeRange(call.startsAt, call.durationMinutes)}
@@ -418,25 +483,146 @@ function CallRow({
               <Icon name="x" size={15} />
             </IconButton>
           )}
-          {(state.kind === "open" || state.kind === "not-open") && (
-            <Button
-              size="sm"
-              variant="success"
-              loading={joining}
-              disabled={state.kind === "not-open" || joining || !voice.canConnect}
-              aria-describedby={state.kind === "not-open" ? hintId : undefined}
-              leading={<Icon name="phone" size={14} />}
-              onClick={join}
-            >
-              Join
-            </Button>
-          )}
+          <JoinButtons
+            mode={mode}
+            joining={joining}
+            canConnect={voice.canConnect}
+            hintId={state.kind === "not-open" ? hintId : undefined}
+            onJoin={join}
+            onKnock={knock}
+            onLeave={stopWaiting}
+          />
         </div>
       </div>
-      {state.kind === "not-open" && (
+      <RowNotices mode={mode} state={state} hintId={hintId} voice={voice} joinError={joinError} />
+      {call.canManageWaiting === true && (
+        <RowWaitingControls scheduledCallId={call.id} enabled={watchWaiting} />
+      )}
+    </li>
+  );
+}
+
+/** The row's join, wait, ask and leave buttons for the viewer's current mode. */
+function JoinButtons({
+  mode,
+  joining,
+  canConnect,
+  hintId,
+  onJoin,
+  onKnock,
+  onLeave,
+}: {
+  readonly mode: RowMode;
+  readonly joining: boolean;
+  readonly canConnect: boolean;
+  readonly hintId: string | undefined;
+  readonly onJoin: () => void;
+  readonly onKnock: () => void;
+  readonly onLeave: () => void;
+}) {
+  const joinsEarly = mode.kind === "join-early";
+  const canJoinNow = mode.kind === "join" || joinsEarly || mode.kind === "not-open";
+  const stalled = mode.kind === "not-open" || joining || !canConnect;
+  return (
+    <>
+      {canJoinNow && (
+        <Button
+          size="sm"
+          variant="success"
+          loading={joining}
+          disabled={stalled}
+          aria-describedby={hintId}
+          leading={<Icon name="phone" size={14} />}
+          onClick={onJoin}
+        >
+          {joinsEarly ? "Join early" : "Join"}
+        </Button>
+      )}
+      {(mode.kind === "wait" || mode.kind === "ask" || mode.kind === "declined") && (
+        <Button
+          size="sm"
+          variant={mode.kind === "wait" ? "success" : "secondary"}
+          loading={joining}
+          disabled={joining || !canConnect}
+          aria-describedby={hintId}
+          leading={<Icon name={mode.kind === "wait" ? "phone" : "users"} size={14} />}
+          onClick={onKnock}
+        >
+          {mode.kind === "wait"
+            ? "Wait to join"
+            : mode.kind === "declined"
+              ? "Ask again"
+              : "Ask to join"}
+        </Button>
+      )}
+      {mode.kind === "waiting" && (
+        <Button size="sm" variant="secondary" onClick={onLeave}>
+          Leave
+        </Button>
+      )}
+    </>
+  );
+}
+
+/** The hint under a call that has not opened yet, worded for the viewer's mode. */
+function notOpenHint(
+  mode: RowMode,
+  state: { readonly opensAt: number; readonly opensInMs: number },
+): string {
+  const at = formatLocalTimeWithZone(state.opensAt);
+  const inTime = formatOpensIn(state.opensInMs);
+  if (mode.kind === "join-early") {
+    return `Opens to everyone at ${at} (${inTime}). As an administrator, you can join now.`;
+  }
+  if (mode.kind === "wait") {
+    return `Opens at ${at} (${inTime}). Wait here and you’ll join automatically.`;
+  }
+  return `This call hasn’t started yet. It opens at ${at} (${inTime})`;
+}
+
+/** The viewer's own waiting-room status line, when they are waiting or were declined. */
+function WaitingStatus({ mode }: { readonly mode: RowMode }) {
+  if (mode.kind === "declined") {
+    return (
+      <p role="status" className="text-[12px] text-danger" data-testid="scheduled-waiting-status">
+        A host declined your request
+      </p>
+    );
+  }
+  if (mode.kind !== "waiting") {
+    return null;
+  }
+  const text =
+    mode.waitingKind === "knock"
+      ? "Waiting for a host to let you in"
+      : `You’ll join automatically when it opens at ${formatLocalTimeWithZone(mode.opensAt)}`;
+  return (
+    <p role="status" className="text-[12px] text-text-muted" data-testid="scheduled-waiting-status">
+      {text}
+    </p>
+  );
+}
+
+/** Status lines under a row: waiting, declined, not-open hints and join errors. */
+function RowNotices({
+  mode,
+  state,
+  hintId,
+  voice,
+  joinError,
+}: {
+  readonly mode: RowMode;
+  readonly state: ScheduledJoinState;
+  readonly hintId: string;
+  readonly voice: { readonly canConnect: boolean; readonly policy: { readonly enabled: boolean } };
+  readonly joinError: string | null;
+}) {
+  return (
+    <>
+      <WaitingStatus mode={mode} />
+      {state.kind === "not-open" && mode.kind !== "waiting" && (
         <p id={hintId} className="text-[12px] text-text-muted" data-testid="scheduled-not-open">
-          This call hasn’t started yet. It opens at {formatLocalTimeWithZone(state.opensAt)} (
-          {formatOpensIn(state.opensInMs)})
+          {notOpenHint(mode, state)}
         </p>
       )}
       {!voice.canConnect && state.kind !== "cancelled" && state.kind !== "ended" && (
@@ -451,6 +637,6 @@ function CallRow({
           {joinError}
         </p>
       )}
-    </li>
+    </>
   );
 }

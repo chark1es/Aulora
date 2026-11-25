@@ -338,6 +338,27 @@ export function notOpenMessage(info: ScheduledCallNotOpenInfo, options?: LocalTi
   return `This call hasn’t started yet. It opens at ${formatLocalTimeWithZone(info.opensAt, options)}`;
 }
 
+/**
+ * The words to show for a call join the server refused: the typed
+ * `ScheduledCallNotOpen` payload becomes the "hasn't started yet" sentence, and
+ * a plain server `ConvexError` message (for example "This call is invite-only")
+ * is passed through. Returns `null` for anything else (a transport failure, a
+ * bug), so callers keep their own fallback instead of showing internals.
+ */
+export function callRefusalMessage(error: unknown, options?: LocalTimeOptions): string | null {
+  const notOpen = parseScheduledCallNotOpen(error);
+  if (notOpen !== null) {
+    return notOpenMessage(notOpen, options);
+  }
+  if (isRecord(error) && error.name === "ConvexError") {
+    const data = error.data;
+    if (typeof data === "string" && data.trim().length > 0) {
+      return data;
+    }
+  }
+  return null;
+}
+
 /** How long a scheduled call without a set length still counts as "now". */
 const DEFAULT_CALL_LENGTH_MINUTES = 60;
 

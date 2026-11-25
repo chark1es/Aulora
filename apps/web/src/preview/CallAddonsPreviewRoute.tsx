@@ -56,11 +56,13 @@ function scheduledCall(
     callId: null,
     canManage: true,
     canJoin: true,
+    canJoinEarly: false,
     ...extra,
   };
 }
 
 const FIXTURES: Record<string, unknown> = {
+  "scheduledCalls:mine": [],
   "scheduledCalls:list": [
     scheduledCall("a", "Design review", NOW + 2 * MIN, {
       description: "Walk through the new lobby.",

@@ -224,6 +224,99 @@ describe("scheduled call open window", () => {
     ).rejects.toThrow(/hasn't started yet/);
   });
 
+  describe("early join by an administrator", () => {
+    async function seedEarly() {
+      const t = newTest();
+      await seedScheduled(t);
+      await t.run(async (ctx) => {
+        await ctx.db.insert("roles", {
+          key: "admin",
+          name: "admin",
+          position: 3,
+          permissions: Permission.Administrator,
+          hoisted: false,
+          mentionable: false,
+        });
+        await ctx.db.insert("members", {
+          userId: "admin-1",
+          roleIds: ["admin"],
+          joinedAt: Date.now(),
+        });
+      });
+      const id = await t.withIdentity({ subject: "user-2" }).mutation(api.scheduledCalls.create, {
+        title: "Later",
+        startsAt: Date.now() + 30 * MINUTE,
+        openLeadMinutes: 5,
+        inviteeUserIds: ["user-1", "admin-1"],
+      });
+      return { t, id };
+    }
+
+    it("lets an administrator join before opensAt without opening the call", async () => {
+      const { t, id } = await seedEarly();
+      const joined = await t
+        .withIdentity({ subject: "admin-1" })
+        .mutation(api.scheduledCalls.join, { scheduledCallId: id, clientId: "device-a" });
+      expect(joined.created).toBe(true);
+      const row = await t.run(async (ctx) => await ctx.db.get(id));
+      expect(row?.status).toBe("scheduled");
+      expect(row?.callId).toBe(joined.callId);
+      expect(row?.openJobId).toBeDefined();
+      const audits = await t.run(async (ctx) => await ctx.db.query("auditLog").take(50));
+      expect(
+        audits.some((a) => a.action === "scheduledCall.open" && a.meta?.includes('"early":true')),
+      ).toBe(true);
+    });
+
+    it("still refuses a non-administrator invitee before opensAt", async () => {
+      const { t, id } = await seedEarly();
+      await t
+        .withIdentity({ subject: "admin-1" })
+        .mutation(api.scheduledCalls.join, { scheduledCallId: id, clientId: "device-a" });
+      await expect(
+        t
+          .withIdentity({ subject: "user-1" })
+          .mutation(api.scheduledCalls.join, { scheduledCallId: id, clientId: "device-b" }),
+      ).rejects.toThrow(/hasn't started yet/);
+    });
+
+    it("lets the administrator rejoin through calls.join and cancel ends the room", async () => {
+      const { t, id } = await seedEarly();
+      const admin = t.withIdentity({ subject: "admin-1" });
+      const { callId } = await admin.mutation(api.scheduledCalls.join, {
+        scheduledCallId: id,
+        clientId: "device-a",
+      });
+      await admin.mutation(api.calls.join, { callId, clientId: "device-a" });
+      await expect(
+        t
+          .withIdentity({ subject: "user-1" })
+          .mutation(api.calls.join, { callId, clientId: "device-b" }),
+      ).rejects.toThrow(/hasn't started yet/);
+      await t.withIdentity({ subject: "user-2" }).mutation(api.scheduledCalls.cancel, {
+        scheduledCallId: id,
+      });
+      const call = await t.run(async (ctx) => await ctx.db.get(callId));
+      expect(call?.status).toBe("ended");
+    });
+
+    it("reports canJoinEarly only for administrators", async () => {
+      const { t, id } = await seedEarly();
+      const admin = await t
+        .withIdentity({ subject: "admin-1" })
+        .query(api.scheduledCalls.get, { scheduledCallId: id });
+      const member = await t
+        .withIdentity({ subject: "user-1" })
+        .query(api.scheduledCalls.get, { scheduledCallId: id });
+      expect(admin.canJoinEarly).toBe(true);
+      expect(member.canJoinEarly).toBe(false);
+      const listed = await t
+        .withIdentity({ subject: "admin-1" })
+        .query(api.scheduledCalls.list, {});
+      expect(listed.find((row) => row.id === id)?.canJoinEarly).toBe(true);
+    });
+  });
+
   it("creates a standalone room on the first join and reuses it", async () => {
     const t = newTest();
     await seedScheduled(t);
@@ -334,7 +427,7 @@ describe("scheduled call open window", () => {
     expect(channelCall?.aloneDeadline).not.toBeNull();
   });
 
-  it("clears the solo deadline when a second invitee joins a standalone room", async () => {
+  it("never arms the solo deadline on a standalone room inside its window", async () => {
     const t = newTest();
     await seedScheduled(t);
     const id = await t.withIdentity({ subject: "user-2" }).mutation(api.scheduledCalls.create, {
@@ -349,7 +442,7 @@ describe("scheduled call open window", () => {
     const alone = await t
       .withIdentity({ subject: "user-2" })
       .query(api.calls.get, { callId: first.callId });
-    expect(alone?.aloneDeadline).not.toBeNull();
+    expect(alone?.aloneDeadline).toBeNull();
 
     await t
       .withIdentity({ subject: "user-1" })

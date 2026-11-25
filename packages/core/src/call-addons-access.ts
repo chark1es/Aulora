@@ -83,7 +83,7 @@ export function canEditScheduledCall(call: {
 }): { readonly edit: boolean; readonly cancel: boolean } {
   const manage = call.canManage === true;
   return {
-    edit: manage && call.status === "scheduled",
+    edit: manage && (call.status === "scheduled" || call.status === "open"),
     cancel: manage && (call.status === "scheduled" || call.status === "open"),
   };
 }

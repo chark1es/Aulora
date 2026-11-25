@@ -1274,9 +1274,18 @@ export default defineSchema({
     openLeadMinutes: v.number(),
     /** Channel-bound target; absent for a standalone room. */
     channelId: v.optional(v.id("channels")),
-    /** Standalone-room invitees. Empty for a channel call. */
+    /**
+     * Invitees: always used by a standalone room, and by a channel call only
+     * while `inviteOnly` is set. Empty otherwise.
+     */
     inviteeUserIds: v.array(v.string()),
     inviteeRoleIds: v.array(v.string()),
+    /**
+     * A channel call that only the creator, administrators, invitees and
+     * members a host admits may join. Absent means false. A standalone room is
+     * always invite-only regardless of this field.
+     */
+    inviteOnly: v.optional(v.boolean()),
     createdBy: v.string(),
     status: v.union(
       v.literal("scheduled"),
@@ -1298,6 +1307,30 @@ export default defineSchema({
     .index("by_creator", ["createdBy"])
     .index("by_channel", ["channelId"])
     .index("by_call", ["callId"]),
+
+  /**
+   * The member waiting room for a scheduled call. `early` means the member may
+   * join but the call is not open yet; `knock` means they are not on the list
+   * of an invite-only call and need a host. One row per member per call.
+   * `admitted` rows outlive the join so a rejoin after a disconnect still works
+   * while the call is live; every row is deleted when the call ends or is
+   * cancelled, and expired rows are pruned by the sweep.
+   */
+  scheduledCallWaiting: defineTable({
+    scheduledCallId: v.id("scheduledCalls"),
+    userId: v.string(),
+    kind: v.union(v.literal("early"), v.literal("knock")),
+    status: v.union(v.literal("waiting"), v.literal("admitted"), v.literal("declined")),
+    requestedAt: v.number(),
+    updatedAt: v.number(),
+    expiresAt: v.number(),
+    decidedBy: v.optional(v.string()),
+    decidedAt: v.optional(v.number()),
+  })
+    .index("by_call_status", ["scheduledCallId", "status", "requestedAt"])
+    .index("by_call_user", ["scheduledCallId", "userId"])
+    .index("by_user_expires", ["userId", "expiresAt"])
+    .index("by_expires", ["expiresAt"]),
 
   ...botTables,
   ...webhookTables,

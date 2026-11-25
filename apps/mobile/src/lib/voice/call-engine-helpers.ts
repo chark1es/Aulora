@@ -1,4 +1,4 @@
-import type { PeerConnectionState } from "@aulora/core";
+import { callRefusalMessage, type PeerConnectionState } from "@aulora/core";
 
 /** Rough connection state mapping for the participant tiles. */
 export function mapConnection(state: string): PeerConnectionState {
@@ -16,6 +16,11 @@ export function mapConnection(state: string): PeerConnectionState {
 }
 
 export function messageOf(error: unknown): string {
+  // A refused scheduled-call join carries the server's own wording.
+  const refusal = callRefusalMessage(error);
+  if (refusal !== null) {
+    return refusal;
+  }
   if (error instanceof Error && error.message.length > 0) {
     return error.message;
   }

@@ -141,6 +141,16 @@ const InviteGuestDialog = lazy(() =>
 const GuestLobbyPrompt = lazy(() =>
   import("../voice/GuestLobbyPrompt").then((module) => ({ default: module.GuestLobbyPrompt })),
 );
+const ScheduledWaitingWatcher = lazy(() =>
+  import("../scheduled/ScheduledWaiting").then((module) => ({
+    default: module.ScheduledWaitingWatcher,
+  })),
+);
+const ScheduledWaitingPrompt = lazy(() =>
+  import("../scheduled/ScheduledWaiting").then((module) => ({
+    default: module.ScheduledWaitingPrompt,
+  })),
+);
 const CallStage = lazy(() =>
   import("../voice/CallStage").then((module) => ({ default: module.CallStage })),
 );
@@ -2368,6 +2378,18 @@ function ChatViewContent({
             <GuestLobbyPrompt />
           </Suspense>
         )}
+        {voice.addons.scheduledCalls && (
+          <Suspense fallback={null}>
+            <ScheduledWaitingWatcher />
+          </Suspense>
+        )}
+        {voice.addons.scheduledCalls &&
+          voice.call?.scheduledCallId !== undefined &&
+          voice.call.scheduledCallId !== null && (
+            <Suspense fallback={null}>
+              <ScheduledWaitingPrompt />
+            </Suspense>
+          )}
         {voice.inviteGuestOpen && voice.call !== null && (
           <Suspense fallback={null}>
             <InviteGuestDialog />

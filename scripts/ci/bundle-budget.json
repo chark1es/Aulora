@@ -27,7 +27,7 @@
       "gzip": 13120
     },
     "assets/call-addons-access.js": {
-      "raw": 896,
+      "raw": 960,
       "gzip": 448
     },
     "assets/CallAloneNotice.js": {
@@ -75,8 +75,8 @@
       "gzip": 2432
     },
     "assets/display-picker.js": {
-      "raw": 8512,
-      "gzip": 3264
+      "raw": 12864,
+      "gzip": 4928
     },
     "assets/DisplaySourcePicker.js": {
       "raw": 6400,
@@ -88,11 +88,11 @@
     },
     "assets/GuestCallRoute.js": {
       "raw": 26304,
-      "gzip": 9088
+      "gzip": 9152
     },
     "assets/GuestLobbyPrompt.js": {
-      "raw": 4480,
-      "gzip": 1792
+      "raw": 4288,
+      "gzip": 1664
     },
     "assets/hooks.js": {
       "raw": 6336,
@@ -103,7 +103,7 @@
       "gzip": 13760
     },
     "assets/index.css": {
-      "raw": 107648,
+      "raw": 107776,
       "gzip": 18752
     },
     "assets/index.js": {
@@ -127,7 +127,7 @@
       "gzip": 53120
     },
     "assets/InviteGuestDialog.js": {
-      "raw": 6976,
+      "raw": 7040,
       "gzip": 2944
     },
     "assets/jetbrains-mono-latin-ext-wght-normal.woff2": {
@@ -151,8 +151,12 @@
       "gzip": 161408
     },
     "assets/LiveTranscriptSheet.js": {
-      "raw": 5248,
-      "gzip": 2176
+      "raw": 5056,
+      "gzip": 2112
+    },
+    "assets/lobby.js": {
+      "raw": 320,
+      "gzip": 256
     },
     "assets/Modal.js": {
       "raw": 2816,
@@ -191,8 +195,8 @@
       "gzip": 128
     },
     "assets/ProfileSession.js": {
-      "raw": 359488,
-      "gzip": 102976
+      "raw": 360256,
+      "gzip": 103168
     },
     "assets/react.js": {
       "raw": 240640,
@@ -219,8 +223,12 @@
       "gzip": 512
     },
     "assets/ScheduledCallsView.js": {
-      "raw": 18752,
-      "gzip": 6592
+      "raw": 22208,
+      "gzip": 7552
+    },
+    "assets/ScheduledWaiting.js": {
+      "raw": 5888,
+      "gzip": 2368
     },
     "assets/SearchInput.js": {
       "raw": 2112,
@@ -267,16 +275,16 @@
       "gzip": 384
     },
     "assets/TranscriptionNoticeView.js": {
-      "raw": 112896,
-      "gzip": 34752
+      "raw": 108736,
+      "gzip": 33152
     },
     "assets/TranscriptionOrbCanvas.js": {
       "raw": 28352,
       "gzip": 11648
     },
     "assets/TranscriptsView.js": {
-      "raw": 27200,
-      "gzip": 7744
+      "raw": 27328,
+      "gzip": 7808
     },
     "assets/use-before-unload.js": {
       "raw": 384,
@@ -332,12 +340,12 @@
     }
   },
   "initial": {
-    "raw": 644672,
+    "raw": 644800,
     "gzip": 228608
   },
   "total": {
-    "raw": 18993600,
-    "gzip": 6094848
+    "raw": 19004224,
+    "gzip": 6098560
   },
   "lazyOnly": [
     {
