@@ -4,6 +4,7 @@ import { api } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 import { authComponent, createAuth } from "./auth";
 import { registerBotRoutes } from "./botHttp";
+import { registerBotMcpRoutes } from "./botMcpHttp";
 import { registerNativeAuthRoutes } from "./nativeAuth";
 import { registerTranscriptionRoutes } from "./transcriptionHttp";
 import { registerWebhookRoutes } from "./webhookHttp";
@@ -21,6 +22,9 @@ registerNativeAuthRoutes(http);
 
 // Bot token exchange and the bot-runner API (see `botHttp.ts`).
 registerBotRoutes(http);
+
+// Bot-management MCP server (see `botMcpHttp.ts`).
+registerBotMcpRoutes(http);
 
 // Incoming webhooks (see `webhookHttp.ts`).
 registerWebhookRoutes(http);

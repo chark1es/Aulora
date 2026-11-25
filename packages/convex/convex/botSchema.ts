@@ -89,6 +89,27 @@ export const botTables = {
     at: v.number(),
   }).index("by_bot", ["botId"]),
 
+  /**
+   * Admin-issued access tokens for the bot-management MCP server. Only the
+   * SHA-256 hex of the secret is stored; the plaintext is shown once. A token
+   * never outranks its creator: permissions are re-checked on every request.
+   */
+  botMcpTokens: defineTable({
+    name: v.string(),
+    tokenHash: v.string(),
+    tokenLast4: v.string(),
+    scope: v.union(v.literal("read"), v.literal("write")),
+    /** Absent means every bot; present restricts the token to these bots. */
+    botIds: v.optional(v.array(v.id("bots"))),
+    createdBy: v.string(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    lastUsedAt: v.optional(v.number()),
+  })
+    .index("by_token_hash", ["tokenHash"])
+    .index("by_creator", ["createdBy"])
+    .index("by_expires", ["expiresAt"]),
+
   /** Singleton: when the bot-runner container last polled for work. */
   botRunner: defineTable({
     lastSeenAt: v.number(),

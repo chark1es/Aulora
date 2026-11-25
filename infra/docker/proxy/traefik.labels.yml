@@ -55,6 +55,12 @@ services:
       traefik.http.routers.aulora-webhooks.tls.certresolver: "letsencrypt"
       traefik.http.routers.aulora-webhooks.priority: "100"
       traefik.http.routers.aulora-webhooks.service: "aulora-auth"
+      # The bot-management MCP endpoint is an HTTP action too.
+      traefik.http.routers.aulora-mcp.rule: "Host(`chat.example.com`) && Path(`/api/mcp`)"
+      traefik.http.routers.aulora-mcp.entrypoints: "websecure"
+      traefik.http.routers.aulora-mcp.tls.certresolver: "letsencrypt"
+      traefik.http.routers.aulora-mcp.priority: "100"
+      traefik.http.routers.aulora-mcp.service: "aulora-auth"
       # Convex API + WebSocket origin (clients connect here directly).
       traefik.http.routers.aulora-convex.rule: "Host(`convex.example.com`)"
       traefik.http.routers.aulora-convex.entrypoints: "websecure"

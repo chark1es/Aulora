@@ -117,6 +117,55 @@ Never put secrets in code. Add them in the **Environment** tab. Values are encry
 
 The **Token** tab creates an API token. A bot using it works from any machine that can reach your server; set `AULORA_TOKEN`, `AULORA_SITE_URL` and `AULORA_CONVEX_URL` and use the same SDK. The token is shown once, so copy it immediately. Creating a new one replaces the old one, and revoking it cuts that bot off. The bot must still be enabled. Bots hosted by the runner do not need a token.
 
+## Manage bots from an AI assistant (MCP)
+
+An AI assistant such as Claude Code or Cursor can create and edit your bots for you through the Model Context Protocol (MCP). It connects to `https://<your-workspace>/api/mcp` with an access token that an admin creates.
+
+### Create a token
+
+1. Open **Workspace settings → Bots → MCP access** and choose **New token**.
+2. Give it a name, pick a **scope**, choose which bots it may reach and how long it lasts (7, 30, 90 or 365 days).
+3. Copy the token (it starts with `amt_`). It is shown once and cannot be recovered; create a new one if you lose it.
+
+A **read** token can list bots, read their files and logs, and check the runner. A **write** token can also create bots, edit their name, description, language and enabled state, replace files, set environment variables and restart a bot. A token limited to specific bots cannot see or change any other bot and cannot create new ones.
+
+### Connect Claude Code
+
+```sh
+claude mcp add --transport http aulora https://<your-workspace>/api/mcp --header "Authorization: Bearer amt_..."
+```
+
+### Connect any other client
+
+Clients that read an `mcpServers` JSON file take the same details:
+
+```json
+{
+  "mcpServers": {
+    "aulora": {
+      "type": "http",
+      "url": "https://<your-workspace>/api/mcp",
+      "headers": { "Authorization": "Bearer amt_..." }
+    }
+  }
+}
+```
+
+If you run your own reverse proxy, send `/api/mcp` to the Convex HTTP-actions port, the same as `/api/webhooks/*`. The [proxy guide](https://github.com/chark1es/Aulora/blob/main/infra/docker/proxy/README.md) has examples.
+
+### What an assistant cannot do
+
+Some things stay in the web app so that a leaked token cannot make a bot more powerful. An assistant cannot grant permissions or change a bot's channel scope, rotate or revoke a bot's API token, delete a bot, or manage MCP tokens. A bot it creates starts disabled with no permissions; you enable it and grant what it needs yourself.
+
+### Keep tokens safe
+
+- Treat a token like a password. Put it in your client's secret storage, not in a repository or chat.
+- Prefer the shortest lifetime and the **read** scope that does the job, and limit write tokens to the bots they need.
+- A token is never stronger than the admin who created it. If that person loses Manage bots, is banned or leaves, the token stops working at once. A write token also cannot edit a bot that holds permissions its creator does not have.
+- Anyone with Manage bots can revoke any token from the MCP access list. Revoking takes effect immediately, and expired tokens are removed automatically.
+- Environment variable values you set through an assistant are write-only. They are never returned to it.
+- Every token action by an assistant appears in the audit log, tagged with the token.
+
 ## Limits
 
 | Limit | Value |

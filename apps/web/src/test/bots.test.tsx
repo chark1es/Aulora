@@ -5,6 +5,8 @@ import { getFunctionName } from "convex/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BotsSettings } from "../components/admin/bots/BotsSettings";
 
+const ORIGIN = "https://chat.example.com";
+
 const state = vi.hoisted(() => ({
   values: new Map<string, unknown>(),
   loadMore: vi.fn(),
@@ -97,7 +99,7 @@ async function openDetail(user: ReturnType<typeof userEvent.setup>, tab?: string
 
 describe("BotsSettings gate and list", () => {
   it("shows the permission hint without ManageBots", () => {
-    render(<BotsSettings canManageBots={false} />);
+    render(<BotsSettings canManageBots={false} origin={ORIGIN} />);
     expect(screen.getByTestId("bots-locked")).toHaveTextContent("Manage Bots permission");
     expect(screen.queryByTestId("bots-settings")).not.toBeInTheDocument();
   });
@@ -113,7 +115,7 @@ describe("BotsSettings gate and list", () => {
         enabled: false,
       }),
     ]);
-    render(<BotsSettings canManageBots />);
+    render(<BotsSettings canManageBots origin={ORIGIN} />);
 
     expect(screen.getByText("Alpha")).toBeInTheDocument();
     expect(screen.getByText("Python")).toBeInTheDocument();
@@ -126,7 +128,7 @@ describe("BotsSettings gate and list", () => {
 
   it("leads the empty state with the setup steps, not an icon tile", () => {
     state.values.set("bots:list", []);
-    const { container } = render(<BotsSettings canManageBots />);
+    const { container } = render(<BotsSettings canManageBots origin={ORIGIN} />);
 
     expect(screen.getByRole("heading", { name: "No bots yet" })).toBeInTheDocument();
     const steps = screen.getByRole("list");
@@ -139,7 +141,7 @@ describe("BotsSettings gate and list", () => {
 
   it("shows the runner-offline banner", () => {
     state.values.set("bots:runnerStatus", { online: false, lastSeenAt: null });
-    render(<BotsSettings canManageBots />);
+    render(<BotsSettings canManageBots origin={ORIGIN} />);
     expect(screen.getByTestId("bot-runner-offline")).toHaveTextContent(
       "docker compose up -d bot-runner",
     );
@@ -147,7 +149,7 @@ describe("BotsSettings gate and list", () => {
 
   it("toggles a bot's enabled flag", async () => {
     const user = userEvent.setup();
-    render(<BotsSettings canManageBots />);
+    render(<BotsSettings canManageBots origin={ORIGIN} />);
     await user.click(screen.getByRole("switch", { name: "Enable Alpha" }));
     expect(state.mutations.get("bots:update")).toHaveBeenCalledWith({
       botId: "bot-1",
@@ -161,7 +163,7 @@ describe("Bot create flow", () => {
     state.mutations.set("bots:create", vi.fn().mockResolvedValue({ botId: "bot-2" }));
     state.values.set("bots:get", detail({ id: "bot-2", name: "Helper" }));
     const user = userEvent.setup();
-    render(<BotsSettings canManageBots />);
+    render(<BotsSettings canManageBots origin={ORIGIN} />);
 
     await user.click(screen.getByRole("button", { name: "New bot" }));
     const dialog = await screen.findByRole("dialog", { name: "New bot" });
@@ -185,7 +187,7 @@ describe("Bot create flow", () => {
 describe("Bot permissions tab", () => {
   it("toggles grantable bits, disables blocked ones and saves the payload", async () => {
     const user = userEvent.setup();
-    render(<BotsSettings canManageBots />);
+    render(<BotsSettings canManageBots origin={ORIGIN} />);
     await openDetail(user, "Permissions");
 
     expect(screen.getByTestId("bot-no-permissions")).toHaveTextContent("can do nothing yet");
@@ -208,7 +210,7 @@ describe("Bot permissions tab", () => {
 
   it("saves a selected channel scope", async () => {
     const user = userEvent.setup();
-    render(<BotsSettings canManageBots />);
+    render(<BotsSettings canManageBots origin={ORIGIN} />);
     await openDetail(user, "Permissions");
 
     await user.click(screen.getByRole("radio", { name: "Only selected channels" }));
@@ -228,7 +230,7 @@ describe("Bot token tab", () => {
   it("shows a new token once and then dismisses it", async () => {
     state.mutations.set("bots:rotateToken", vi.fn().mockResolvedValue({ token: "abt_secret" }));
     const user = userEvent.setup();
-    render(<BotsSettings canManageBots />);
+    render(<BotsSettings canManageBots origin={ORIGIN} />);
     await openDetail(user, "Token");
 
     await user.click(screen.getByRole("button", { name: "Generate token" }));
@@ -242,7 +244,7 @@ describe("Bot token tab", () => {
 describe("Bot environment tab", () => {
   it("never renders a value and saves names only", async () => {
     const user = userEvent.setup();
-    render(<BotsSettings canManageBots />);
+    render(<BotsSettings canManageBots origin={ORIGIN} />);
     await openDetail(user, "Environment");
 
     await user.type(screen.getByLabelText("Name"), "API_KEY");
@@ -265,7 +267,7 @@ describe("Bot environment tab", () => {
 describe("Bot code tab", () => {
   it("rejects a bad path and saves only the changed file", async () => {
     const user = userEvent.setup();
-    render(<BotsSettings canManageBots />);
+    render(<BotsSettings canManageBots origin={ORIGIN} />);
     await openDetail(user, "Code");
 
     await user.click(screen.getByRole("button", { name: "Add file" }));
@@ -306,7 +308,7 @@ it("offers more channels beyond the first page in bot permissions", async () => 
     isDone: false,
   });
   const user = userEvent.setup();
-  const view = render(<BotsSettings canManageBots />);
+  const view = render(<BotsSettings canManageBots origin={ORIGIN} />);
   await openDetail(user, "Permissions");
   await user.click(screen.getByRole("button", { name: "Load more channels" }));
   expect(loadMore).toHaveBeenCalledWith(100);
@@ -314,7 +316,7 @@ it("offers more channels beyond the first page in bot permissions", async () => 
     page: [{ id: "c101", kind: "text", name: "channel-101" }],
     isDone: true,
   });
-  view.rerender(<BotsSettings canManageBots />);
+  view.rerender(<BotsSettings canManageBots origin={ORIGIN} />);
   await user.click(screen.getByRole("radio", { name: "Only selected channels" }));
   await user.click(screen.getByRole("button", { name: "Add a channel" }));
   expect(screen.getByText("channel-101")).toBeInTheDocument();

@@ -78,14 +78,16 @@ const BOT_SETUP_STEPS = [
 
 export interface BotListProps {
   readonly onOpen: (botId: string) => void;
+  readonly onOpenMcp: () => void;
 }
 
 /**
  * The Bots index: every bot with its language, status and enable switch, a
- * banner when the runner is offline, and the create dialog. Selecting a row
+ * banner when the runner is offline, and the create dialog. "MCP access" opens
+ * the AI-assistant token page. Selecting a row
  * drills into the detail view.
  */
-export function BotList({ onOpen }: BotListProps) {
+export function BotList({ onOpen, onOpenMcp }: BotListProps) {
   const bots = useQuery(api.bots.list, {});
   const runner = useQuery(api.bots.runnerStatus, {});
   const update = useMutation(api.bots.update);
@@ -106,16 +108,23 @@ export function BotList({ onOpen }: BotListProps) {
   // there is a list to add to.
   const hasBots = bots !== undefined && bots.length > 0;
   const isEmpty = bots !== undefined && bots.length === 0;
-  const headerAction = hasBots ? (
-    <Button
-      leading={<Icon name="plus" size={14} />}
-      onClick={() => {
-        setCreateOpen(true);
-      }}
-    >
-      New bot
-    </Button>
-  ) : null;
+  const headerAction = (
+    <>
+      <Button variant="secondary" onClick={onOpenMcp}>
+        MCP access
+      </Button>
+      {hasBots && (
+        <Button
+          leading={<Icon name="plus" size={14} />}
+          onClick={() => {
+            setCreateOpen(true);
+          }}
+        >
+          New bot
+        </Button>
+      )}
+    </>
+  );
 
   return (
     <div className={cn("flex flex-col", isEmpty ? "gap-6" : "gap-8")} data-testid="bots-settings">

@@ -87,6 +87,44 @@ Surface (TypeScript `@aulora/bot` / Python `aulora_bot`, same shape, idiomatic n
 
 Settings hub -> Bots (visible with `ManageBots`; read-only hint otherwise). List with status dot, create dialog (name, language, template), detail with tabs Overview / Code / Permissions / Environment / Logs / Token. Permissions tab: grouped checkboxes over `BOT_GRANTABLE_PERMISSIONS` (blocked ones listed as unavailable with a reason), channel scope (all granted channels or selected), warning copy for powerful grants (ManageMessages, Kick, Ban, MentionEveryone). Banner when `runnerStatus.online` is false ("The bot runner is not running. Start it with `docker compose up -d bot-runner`."). Roles editor shows `ManageBots` with a label. Bot messages/members get a `BOT` badge.
 
+## MCP server
+
+An AI client (Claude Code, Cursor, ...) can manage bots over MCP with admin-issued scoped tokens. Code: `botMcpTokens.ts` (admin API), `botMcpHttp.ts` (transport), `botMcpInternal.ts` (internal functions), `lib/botMcpProtocol.ts` (pure JSON-RPC), `lib/botMcpTools.ts` (catalog), `lib/botMcpArgs.ts` + `lib/botMcpRun.ts` (validation and execution), `lib/botMcpAuth.ts` (tokens and authorization), `lib/botOperations.ts` (operations shared with `bots.*`). Constants: `packages/core/src/botMcp.ts`.
+
+### Tokens
+
+* `amt_` + 43 base64url characters (256 random bits). Only SHA-256 hex (`tokenHash`) and `tokenLast4` are stored; the plaintext is returned once, by `botMcpTokens.create`.
+* Table `botMcpTokens`: `name` (1..64), `tokenHash`, `tokenLast4`, `scope` (`read` | `write`), `botIds?` (absent = all bots), `createdBy`, `createdAt`, `expiresAt` (7/30/90/365 days), `lastUsedAt?`. Indexes `by_token_hash`, `by_creator`, `by_expires`. At most 25 unexpired tokens.
+* `botMcpTokens.list | create | revoke` all need `ManageBots`; any holder may revoke any token. Audit: `bot.mcp.token.create` (name, scope, bot count or `all`, expiry days) and `bot.mcp.token.revoke`; never the token. Deleting an account deletes its tokens; a daily cron deletes expired ones in bounded batches.
+
+### Authorizing a request
+
+1. `Authorization: Bearer amt_...`; missing or malformed -> `401` with `WWW-Authenticate: Bearer realm="aulora-mcp"` and a JSON-RPC error body.
+2. Hash the token and enforce 120 requests/min keyed by the hash, **before** the lookup (`429`).
+3. Look up by `by_token_hash`. Unknown and expired tokens give the same `401`.
+4. Load the creator's live permission context. The creator must still be a member, not actively banned and hold `ManageBots` (owners implicitly), else `403`. A token is never stronger than its creator right now.
+5. `lastUsedAt` is refreshed at most once per 60 s.
+6. Each tool call re-authorizes inside its own transaction, then runs with the creator as actor. Write tools also apply `requireCanControlBot`. A token restricted by `botIds` only sees and acts on those bots; any other id is `Bot not found`, so existence is not an oracle.
+
+MCP-originated audit rows use the creator as `actorId` and add `via: "mcp"` and `tokenId` to meta. MCP restarts are audited as `bot.restart`; UI restarts are not.
+
+### Tools
+
+Read scope: `list_bots`, `get_bot` (files with byte sizes, env **names** only, `allowedChannelIds`), `read_file`, `read_logs` (default 100, max 500), `get_runner_status`.
+
+Write scope (plus all read tools): `create_bot` (refused for tokens restricted to specific bots; starts disabled with no grants), `update_bot`, `write_files` (atomic, same limits as the UI), `set_env` (values write-only), `restart_bot`.
+
+Not exposed, so a leaked token cannot escalate a bot: permissions, grants and channel scope; bot API token rotate/revoke; bot deletion; MCP token management. Every tool has a closed JSON Schema (`additionalProperties: false`) and its arguments are validated again on the server (unknown keys rejected).
+
+### Transport
+
+Stateless Streamable HTTP at `POST /api/mcp`, JSON responses only (no sessions, no SSE). Single JSON-RPC 2.0 messages; batches get `-32600`. Methods `initialize` (echoes the client's protocol version if it is `2025-11-25`, `2025-06-18`, `2025-03-26` or `2024-11-05`, else `2025-06-18`), `ping`, `tools/list` (only tools the scope allows), `tools/call`; unknown method `-32601`, bad params `-32602`. Notifications get `202` with an empty body. Tool failures return a normal result with `isError: true` and a safe message; unexpected errors return a generic message.
+
+* `GET` and `DELETE` -> `405` with `Allow: POST`. No CORS headers.
+* An `Origin` header, if present, must match the workspace site URL (`SITE_URL`/`CONVEX_SITE_URL`), else `403` (DNS rebinding and CSRF).
+* `Content-Type: application/json` required (`415`). Body capped at 2 MiB by declared and actual size (`413`). Responses carry `cache-control: no-store`.
+* Reverse proxies must route `/api/mcp` to the Convex HTTP-actions port (3211), like `/api/webhooks/*`.
+
 ## Quality bar
 
 Repo checks: `bun run lint`, `bun run typecheck`, `bun run test`, `bun run test:infra`. Match surrounding style (Biome formatting, comment density). Codacy gate (zero new issues): no `obj[variable]` writes (use Map/`.at()`), `Math.random` banned (use `crypto`), no `===` on values named `token` (hash then compare/lookup, or `timingSafeEqual`), `fetch` of a URL passed as a function parameter is flagged (build URLs from validated config in one module), functions ≤ 50 nloc and ≤ 8 parameters, files ≤ 500 nloc, no `Id<...> | null` unions in exported React props (let types infer). Never log or return secrets. Every security rule above needs a test.

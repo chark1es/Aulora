@@ -1,3 +1,4 @@
+import { BOT_MCP_LIMITS } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
 import type { Id, TableNames } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
@@ -210,6 +211,16 @@ export const deleteUserData = internalMutation({
         .query("bans")
         .withIndex("by_user", (q) => q.eq("userId", userId))
         .collect(),
+    );
+
+    // MCP access tokens never outlive their creator. Live tokens are capped and
+    // expired ones are pruned daily, so a small window covers every row.
+    await deleteRows(
+      ctx,
+      ctx.db
+        .query("botMcpTokens")
+        .withIndex("by_creator", (q) => q.eq("createdBy", userId))
+        .take(BOT_MCP_LIMITS.maxTokens * 4),
     );
 
     // Private notes the person wrote, and notes others wrote about them.
