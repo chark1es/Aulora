@@ -322,7 +322,9 @@ function AdminPanelSystemBody(props: AdminPanelBodyProps) {
           canManageTranscription={permission("ManageTranscription")}
         />
       )}
-      {nav.tab === "bots" && <BotsSettings canManageBots={permission("ManageBots")} />}
+      {nav.tab === "bots" && (
+        <BotsSettings canManageBots={permission("ManageBots")} origin={origin} />
+      )}
       {nav.tab === "instance" && <InstanceAdminPanel canManage={viewer.isOwner} variant="inline" />}
     </>
   );

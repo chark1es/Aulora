@@ -42,6 +42,10 @@ Three things must be true at the public edge:
    them already; if your edge sends `/api/*` straight to `3210`, add a more
    specific route for `/api/webhooks/*` to `3211`, as for `/api/auth/*`.
 
+   **`<web origin>/api/mcp` follows the same rule.** The bot-management MCP
+   server is a Convex HTTP action at `convex-backend:3211`; route that exact
+   path there and keep request bodies up to 2 MiB.
+
 ### Forwarded client address
 
 The unauthenticated `/api/auth/native/*` routes rate-limit by client address.
@@ -80,6 +84,7 @@ separate buckets.
 | `chat.example.com`       | `web`                    | `80`  | SPA + `/.well-known` |
 | `chat.example.com/api/auth/*` | `convex-backend`   | `3211`| First-party auth |
 | `chat.example.com/api/webhooks/*` | `convex-backend` | `3211`| Incoming webhooks |
+| `chat.example.com/api/mcp` | `convex-backend` | `3211`| Bot-management MCP server |
 | `chat.example.com/api/*` | `convex-backend`         | `3210`| Convex API + WebSocket (single-host) |
 | `convex.example.com`     | `convex-backend`         | `3210`| Convex API + WebSocket (split-host) |
 | `dashboard.example.com`  | `convex-dashboard`       | `6791`| Keep private or behind auth |

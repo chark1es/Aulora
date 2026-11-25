@@ -15,16 +15,8 @@
       "reason": "Pre-existing collect() on \"bots\"; replace it with a bounded index query."
     },
     {
-      "key": "bots.ts#create#collect",
-      "reason": "Pre-existing collect() on \"bots\"; replace it with a bounded index query."
-    },
-    {
       "key": "bots.ts#list#collect",
       "reason": "Pre-existing collect() on \"bots\"; replace it with a bounded index query."
-    },
-    {
-      "key": "bots.ts#logs#collect",
-      "reason": "Pre-existing collect() on \"botLogs\"; replace it with a bounded index query."
     },
     {
       "key": "calls.ts#activeCalls#collect",

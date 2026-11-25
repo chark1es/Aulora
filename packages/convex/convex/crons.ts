@@ -32,6 +32,9 @@ crons.interval("call sweep", { seconds: 30 }, internal.calls.sweep, {});
 // Bot events are a one-hour outbox: `poll` reads them, then they are dropped.
 crons.interval("bot events prune", { hours: 1 }, internal.botEvents.prune, {});
 
+// Expired MCP access tokens no longer authenticate; this drops their rows daily.
+crons.cron("bot mcp token prune", "20 4 * * *", internal.botMcpInternal.pruneExpired, {});
+
 // Scheduled calls flip to `open` at their open time; the per-call job is the
 // primary trigger and this pass is the backstop (plus ends stale rooms).
 crons.interval("scheduled call sweep", { minutes: 1 }, internal.scheduledCalls.sweep, {});
