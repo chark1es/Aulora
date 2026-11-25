@@ -11,6 +11,7 @@ import {
   groupByLocalDay,
   SCHEDULED_CALL_LIST_LIMIT,
   type ScheduledCallStatus,
+  type ScheduledJoinState,
   scheduledJoinState,
   splitScheduledCalls,
   viewerTimeZone,
@@ -30,6 +31,7 @@ import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import {
   type MyWaiting,
+  type RowMode,
   rowMode,
   WAITING_WATCH_WINDOW_MS,
   waitingByCall,
@@ -363,7 +365,6 @@ function CallRow({
   const [joinError, setJoinError] = useState<string | null>(null);
   const state = scheduledJoinState(call, now);
   const mode = rowMode(call, waiting, now);
-  const joinsEarly = mode.kind === "join-early";
   const actions = canEditScheduledCall(call);
   const where =
     call.channelId !== null
@@ -424,9 +425,6 @@ function CallRow({
     });
   };
 
-  const canJoinNow = mode.kind === "join" || mode.kind === "join-early" || mode.kind === "not-open";
-  const stalled = (mode.kind === "not-open" && !joinsEarly) || joining || !voice.canConnect;
-
   return (
     <li className="flex flex-col gap-2 px-4 py-3" data-testid={`scheduled-call-${call.id}`}>
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
@@ -485,43 +483,104 @@ function CallRow({
               <Icon name="x" size={15} />
             </IconButton>
           )}
-          {canJoinNow && (
-            <Button
-              size="sm"
-              variant="success"
-              loading={joining}
-              disabled={stalled}
-              aria-describedby={state.kind === "not-open" ? hintId : undefined}
-              leading={<Icon name="phone" size={14} />}
-              onClick={join}
-            >
-              {joinsEarly ? "Join early" : "Join"}
-            </Button>
-          )}
-          {(mode.kind === "wait" || mode.kind === "ask" || mode.kind === "declined") && (
-            <Button
-              size="sm"
-              variant={mode.kind === "wait" ? "success" : "secondary"}
-              loading={joining}
-              disabled={joining || !voice.canConnect}
-              aria-describedby={state.kind === "not-open" ? hintId : undefined}
-              leading={<Icon name={mode.kind === "wait" ? "phone" : "users"} size={14} />}
-              onClick={knock}
-            >
-              {mode.kind === "wait"
-                ? "Wait to join"
-                : mode.kind === "declined"
-                  ? "Ask again"
-                  : "Ask to join"}
-            </Button>
-          )}
-          {mode.kind === "waiting" && (
-            <Button size="sm" variant="secondary" onClick={stopWaiting}>
-              Leave
-            </Button>
-          )}
+          <JoinButtons
+            mode={mode}
+            joining={joining}
+            canConnect={voice.canConnect}
+            hintId={state.kind === "not-open" ? hintId : undefined}
+            onJoin={join}
+            onKnock={knock}
+            onLeave={stopWaiting}
+          />
         </div>
       </div>
+      <RowNotices mode={mode} state={state} hintId={hintId} voice={voice} joinError={joinError} />
+      {call.canManageWaiting === true && (
+        <RowWaitingControls scheduledCallId={call.id} enabled={watchWaiting} />
+      )}
+    </li>
+  );
+}
+
+/** The row's join, wait, ask and leave buttons for the viewer's current mode. */
+function JoinButtons({
+  mode,
+  joining,
+  canConnect,
+  hintId,
+  onJoin,
+  onKnock,
+  onLeave,
+}: {
+  readonly mode: RowMode;
+  readonly joining: boolean;
+  readonly canConnect: boolean;
+  readonly hintId: string | undefined;
+  readonly onJoin: () => void;
+  readonly onKnock: () => void;
+  readonly onLeave: () => void;
+}) {
+  const joinsEarly = mode.kind === "join-early";
+  const canJoinNow = mode.kind === "join" || joinsEarly || mode.kind === "not-open";
+  const stalled = mode.kind === "not-open" || joining || !canConnect;
+  return (
+    <>
+      {canJoinNow && (
+        <Button
+          size="sm"
+          variant="success"
+          loading={joining}
+          disabled={stalled}
+          aria-describedby={hintId}
+          leading={<Icon name="phone" size={14} />}
+          onClick={onJoin}
+        >
+          {joinsEarly ? "Join early" : "Join"}
+        </Button>
+      )}
+      {(mode.kind === "wait" || mode.kind === "ask" || mode.kind === "declined") && (
+        <Button
+          size="sm"
+          variant={mode.kind === "wait" ? "success" : "secondary"}
+          loading={joining}
+          disabled={joining || !canConnect}
+          aria-describedby={hintId}
+          leading={<Icon name={mode.kind === "wait" ? "phone" : "users"} size={14} />}
+          onClick={onKnock}
+        >
+          {mode.kind === "wait"
+            ? "Wait to join"
+            : mode.kind === "declined"
+              ? "Ask again"
+              : "Ask to join"}
+        </Button>
+      )}
+      {mode.kind === "waiting" && (
+        <Button size="sm" variant="secondary" onClick={onLeave}>
+          Leave
+        </Button>
+      )}
+    </>
+  );
+}
+
+/** Status lines under a row: waiting, declined, not-open hints and join errors. */
+function RowNotices({
+  mode,
+  state,
+  hintId,
+  voice,
+  joinError,
+}: {
+  readonly mode: RowMode;
+  readonly state: ScheduledJoinState;
+  readonly hintId: string;
+  readonly voice: { readonly canConnect: boolean; readonly policy: { readonly enabled: boolean } };
+  readonly joinError: string | null;
+}) {
+  const joinsEarly = mode.kind === "join-early";
+  return (
+    <>
       {mode.kind === "waiting" && (
         <p
           role="status"
@@ -559,9 +618,6 @@ function CallRow({
           {joinError}
         </p>
       )}
-      {call.canManageWaiting === true && (
-        <RowWaitingControls scheduledCallId={call.id} enabled={watchWaiting} />
-      )}
-    </li>
+    </>
   );
 }

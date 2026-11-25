@@ -889,18 +889,24 @@ export const sweep = internalMutation({
       });
       await purgeWaiting(ctx, scheduled._id);
     }
-    // Lapsed waiting-room rows (unanswered knocks, early arrivals who never
-    // came, cooled-down declines) go in bounded batches.
-    const lapsed = await ctx.db
-      .query("scheduledCallWaiting")
-      .withIndex("by_expires", (q) => q.lt("expiresAt", now))
-      .take(WAITING_PRUNE_BATCH);
-    for (const row of lapsed) {
-      await ctx.db.delete(row._id);
-    }
+    await pruneLapsedWaiting(ctx, now);
     return null;
   },
 });
+
+/**
+ * Deletes lapsed waiting-room rows (unanswered knocks, early arrivals who never
+ * came, cooled-down declines) in one bounded batch.
+ */
+async function pruneLapsedWaiting(ctx: MutationCtx, now: number): Promise<void> {
+  const lapsed = await ctx.db
+    .query("scheduledCallWaiting")
+    .withIndex("by_expires", (q) => q.lt("expiresAt", now))
+    .take(WAITING_PRUNE_BATCH);
+  for (const row of lapsed) {
+    await ctx.db.delete(row._id);
+  }
+}
 
 /** Lapsed waiting-room rows removed per sweep run. */
 const WAITING_PRUNE_BATCH = 100;
@@ -979,42 +985,61 @@ export const enter = mutation({
       windowMs: WAITING_ENTER_RATE_WINDOW_MS,
     });
     const kind: ScheduledWaitingKind = standing.allowed ? "early" : "knock";
-    const expiresAt =
-      kind === "early"
-        ? Math.min(opensAt + SCHEDULED_WAITING_GRACE_MS, now + SCHEDULED_WAITING_EARLY_MAX_MS)
-        : now + SCHEDULED_WAITING_KNOCK_TTL_MS;
-    if (existing !== null && existing.status === "waiting" && existing.expiresAt > now) {
-      await ctx.db.patch(existing._id, { kind, expiresAt, updatedAt: now });
-      return { state: "waiting", kind, expiresAt };
-    }
-    const pending = await livePendingRows(ctx, scheduled._id, now);
-    if (pending.length >= SCHEDULED_WAITING_MAX_PENDING) {
-      throw new ConvexError("Too many people are waiting to join. Try again in a moment.");
-    }
-    if (existing !== null) {
-      await ctx.db.patch(existing._id, {
-        kind,
-        status: "waiting",
-        requestedAt: now,
-        updatedAt: now,
-        expiresAt,
-        decidedBy: undefined,
-        decidedAt: undefined,
-      });
-    } else {
-      await ctx.db.insert("scheduledCallWaiting", {
-        scheduledCallId: scheduled._id,
-        userId,
-        kind,
-        status: "waiting",
-        requestedAt: now,
-        updatedAt: now,
-        expiresAt,
-      });
-    }
+    const expiresAt = waitingExpiresAt(kind, opensAt, now);
+    await upsertWaitingRow(ctx, scheduled._id, userId, existing, { kind, expiresAt, now });
     return { state: "waiting", kind, expiresAt };
   },
 });
+
+/** When a fresh waiting row lapses: early arrivals wait until just past the open time. */
+function waitingExpiresAt(kind: ScheduledWaitingKind, opensAt: number, now: number): number {
+  return kind === "early"
+    ? Math.min(opensAt + SCHEDULED_WAITING_GRACE_MS, now + SCHEDULED_WAITING_EARLY_MAX_MS)
+    : now + SCHEDULED_WAITING_KNOCK_TTL_MS;
+}
+
+/**
+ * Stores the caller's `waiting` row. A live waiting row is refreshed in place
+ * (it already counts toward the cap); a new or lapsed request respects the cap.
+ */
+async function upsertWaitingRow(
+  ctx: MutationCtx,
+  scheduledCallId: Id<"scheduledCalls">,
+  userId: string,
+  existing: Doc<"scheduledCallWaiting"> | null,
+  row: { readonly kind: ScheduledWaitingKind; readonly expiresAt: number; readonly now: number },
+): Promise<void> {
+  const { kind, expiresAt, now } = row;
+  if (existing !== null && existing.status === "waiting" && existing.expiresAt > now) {
+    await ctx.db.patch(existing._id, { kind, expiresAt, updatedAt: now });
+    return;
+  }
+  const pending = await livePendingRows(ctx, scheduledCallId, now);
+  if (pending.length >= SCHEDULED_WAITING_MAX_PENDING) {
+    throw new ConvexError("Too many people are waiting to join. Try again in a moment.");
+  }
+  if (existing !== null) {
+    await ctx.db.patch(existing._id, {
+      kind,
+      status: "waiting",
+      requestedAt: now,
+      updatedAt: now,
+      expiresAt,
+      decidedBy: undefined,
+      decidedAt: undefined,
+    });
+    return;
+  }
+  await ctx.db.insert("scheduledCallWaiting", {
+    scheduledCallId,
+    userId,
+    kind,
+    status: "waiting",
+    requestedAt: now,
+    updatedAt: now,
+    expiresAt,
+  });
+}
 
 /**
  * The call's unexpired `waiting` rows, oldest first. Reads at most twice the
