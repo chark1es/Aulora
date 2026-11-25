@@ -7,7 +7,7 @@ the web SPA, and a one-shot `setup` container for first-run provisioning.
 There is **no TLS terminator here** on purpose. Put the stack behind your own
 edge proxy (Coolify, Traefik, Caddy, nginx, a cloud LB) — see `proxy/`.
 
-For [Coolify](https://coolify.io), deploy a release tag (for example `v1.7.1`) using
+For [Coolify](https://coolify.io), deploy a release tag (for example `v1.8.0`) using
 `docker-compose.coolify.yml` instead of `docker-compose.yml`, and follow [the Coolify guide](../../apps/docs/content/coolify.md). It
 publishes no host ports, marks the one-shot services for Coolify's health
 check, and keeps generated secrets in the `setup-state` named volume so a
