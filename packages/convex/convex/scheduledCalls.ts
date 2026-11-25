@@ -986,7 +986,12 @@ export const enter = mutation({
     });
     const kind: ScheduledWaitingKind = standing.allowed ? "early" : "knock";
     const expiresAt = waitingExpiresAt(kind, opensAt, now);
-    await upsertWaitingRow(ctx, scheduled._id, userId, existing, { kind, expiresAt, now });
+    await upsertWaitingRow(ctx, scheduled._id, userId, {
+      kind,
+      expiresAt,
+      now,
+      ...(existing !== null ? { existing } : {}),
+    });
     return { state: "waiting", kind, expiresAt };
   },
 });
@@ -1006,11 +1011,16 @@ async function upsertWaitingRow(
   ctx: MutationCtx,
   scheduledCallId: Id<"scheduledCalls">,
   userId: string,
-  existing: Doc<"scheduledCallWaiting"> | null,
-  row: { readonly kind: ScheduledWaitingKind; readonly expiresAt: number; readonly now: number },
+  row: {
+    readonly kind: ScheduledWaitingKind;
+    readonly expiresAt: number;
+    readonly now: number;
+    /** The caller's current row, when they have one. */
+    readonly existing?: Doc<"scheduledCallWaiting">;
+  },
 ): Promise<void> {
-  const { kind, expiresAt, now } = row;
-  if (existing !== null && existing.status === "waiting" && existing.expiresAt > now) {
+  const { kind, expiresAt, now, existing } = row;
+  if (existing !== undefined && existing.status === "waiting" && existing.expiresAt > now) {
     await ctx.db.patch(existing._id, { kind, expiresAt, updatedAt: now });
     return;
   }
@@ -1018,7 +1028,7 @@ async function upsertWaitingRow(
   if (pending.length >= SCHEDULED_WAITING_MAX_PENDING) {
     throw new ConvexError("Too many people are waiting to join. Try again in a moment.");
   }
-  if (existing !== null) {
+  if (existing !== undefined) {
     await ctx.db.patch(existing._id, {
       kind,
       status: "waiting",

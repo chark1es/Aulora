@@ -564,6 +564,22 @@ function JoinButtons({
   );
 }
 
+/** The hint under a call that has not opened yet, worded for the viewer's mode. */
+function notOpenHint(
+  mode: RowMode,
+  state: { readonly opensAt: number; readonly opensInMs: number },
+): string {
+  const at = formatLocalTimeWithZone(state.opensAt);
+  const inTime = formatOpensIn(state.opensInMs);
+  if (mode.kind === "join-early") {
+    return `Opens to everyone at ${at} (${inTime}). As an administrator, you can join now.`;
+  }
+  if (mode.kind === "wait") {
+    return `Opens at ${at} (${inTime}). Wait here and you’ll join automatically.`;
+  }
+  return `This call hasn’t started yet. It opens at ${at} (${inTime})`;
+}
+
 /** Status lines under a row: waiting, declined, not-open hints and join errors. */
 function RowNotices({
   mode,
@@ -578,7 +594,6 @@ function RowNotices({
   readonly voice: { readonly canConnect: boolean; readonly policy: { readonly enabled: boolean } };
   readonly joinError: string | null;
 }) {
-  const joinsEarly = mode.kind === "join-early";
   return (
     <>
       {mode.kind === "waiting" && (
@@ -599,11 +614,7 @@ function RowNotices({
       )}
       {state.kind === "not-open" && mode.kind !== "waiting" && (
         <p id={hintId} className="text-[12px] text-text-muted" data-testid="scheduled-not-open">
-          {joinsEarly
-            ? `Opens to everyone at ${formatLocalTimeWithZone(state.opensAt)} (${formatOpensIn(state.opensInMs)}). As an administrator, you can join now.`
-            : mode.kind === "wait"
-              ? `Opens at ${formatLocalTimeWithZone(state.opensAt)} (${formatOpensIn(state.opensInMs)}). Wait here and you’ll join automatically.`
-              : `This call hasn’t started yet. It opens at ${formatLocalTimeWithZone(state.opensAt)} (${formatOpensIn(state.opensInMs)})`}
+          {notOpenHint(mode, state)}
         </p>
       )}
       {!voice.canConnect && state.kind !== "cancelled" && state.kind !== "ended" && (
