@@ -1,6 +1,6 @@
 import { Button, Icon, Modal } from "@aulora/ui-web";
 import { type ReactMutation, useMutation } from "convex/react";
-import { useState } from "react";
+import { type Dispatch, type SetStateAction, useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
 import { BotMcpFields, type McpBotOption } from "./BotMcpFields";
 import { BotMcpReveal } from "./BotMcpReveal";
@@ -26,7 +26,7 @@ type CreateToken = ReactMutation<typeof api.botMcpTokens.create>;
 function submitMcpForm(
   create: CreateToken,
   form: McpFormState,
-  setStatus: (status: FormStatus) => void,
+  setStatus: Dispatch<SetStateAction<FormStatus>>,
 ): void {
   const invalid = validateMcpForm(form);
   if (invalid !== null) {

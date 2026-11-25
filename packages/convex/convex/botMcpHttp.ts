@@ -100,11 +100,11 @@ interface Authorized {
 
 /** Steps 1-4 of request authorization; returns a refusal response or the session facts. */
 async function authenticate(ctx: ActionCtx, request: Request): Promise<Authorized | Response> {
-  const secret = readBearer(request.headers.get("authorization"));
-  if (secret === null) {
+  const presented = readBearer(request.headers.get("authorization"));
+  if (typeof presented !== "string") {
     return unauthorized();
   }
-  const tokenHash = await hashBotMcpToken(secret);
+  const tokenHash = await hashBotMcpToken(presented);
   try {
     await ctx.runMutation(internal.botMcpInternal.enforceTokenRateLimit, { tokenHash });
   } catch {
@@ -177,7 +177,7 @@ export function registerBotMcpRoutes(http: HttpRouter): void {
     http.route({
       path: BOT_MCP_PATH,
       method,
-      handler: httpAction(async () => methodNotAllowed()),
+      handler: httpAction(() => Promise.resolve(methodNotAllowed())),
     });
   }
 }

@@ -5,8 +5,8 @@ import { formatDate } from "../../../lib/invite-format";
 import {
   describeMcpExpiry,
   describeMcpLastUsed,
-  MCP_SCOPE_LABELS,
   maskedMcpToken,
+  mcpScopeLabel,
 } from "./bot-mcp-format";
 
 export interface BotMcpTokenRowProps {
@@ -43,7 +43,7 @@ export function BotMcpTokenRow(props: BotMcpTokenRowProps) {
             {token.name}
           </Text>
           <Badge tone={token.scope === "write" ? "accent" : "neutral"} size="sm">
-            {MCP_SCOPE_LABELS[token.scope]}
+            {mcpScopeLabel(token.scope)}
           </Badge>
           {token.expired && (
             <Badge tone="danger" size="sm">

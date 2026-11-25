@@ -13,15 +13,15 @@ export type McpBotAccess = "all" | "selected";
 
 export const MCP_DEFAULT_EXPIRY_DAYS: McpExpiryDays = 30;
 
-export const MCP_SCOPE_LABELS: Readonly<Record<BotMcpScope, string>> = {
-  read: "Read only",
-  write: "Read & write",
-};
+export function mcpScopeLabel(scope: BotMcpScope): string {
+  return scope === "read" ? "Read only" : "Read & write";
+}
 
-export const MCP_SCOPE_DESCRIPTIONS: Readonly<Record<BotMcpScope, string>> = {
-  read: "List bots, read code and logs",
-  write: "Also create bots, edit code, set environment variables, enable/disable and restart",
-};
+export function mcpScopeDescription(scope: BotMcpScope): string {
+  return scope === "read"
+    ? "List bots, read code and logs"
+    : "Also create bots, edit code, set environment variables, enable/disable and restart";
+}
 
 export interface McpFormState {
   readonly name: string;
@@ -44,7 +44,7 @@ export function expiryOptionLabel(days: McpExpiryDays): string {
 }
 
 /** The expiry option for a `Select` value, or `undefined` for an unknown one. */
-export function parseExpiryDays(value: string): McpExpiryDays | undefined {
+export function parseExpiryDays(value: string) {
   return BOT_MCP_LIMITS.expiryDays.find((days) => String(days) === value);
 }
 

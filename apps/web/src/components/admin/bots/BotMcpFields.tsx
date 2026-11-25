@@ -3,18 +3,18 @@ import { BOT_MCP_LIMITS, BOT_MCP_SCOPES, type BotMcpScope } from "@aulora/core";
 import { Checkbox, ChoiceList, type ChoiceOption, Icon, Input, Select, Text } from "@aulora/ui-web";
 import {
   expiryOptionLabel,
-  MCP_SCOPE_DESCRIPTIONS,
-  MCP_SCOPE_LABELS,
   type McpBotAccess,
   type McpFormState,
+  mcpScopeDescription,
+  mcpScopeLabel,
   parseExpiryDays,
   toggleBotId,
 } from "./bot-mcp-format";
 
 const SCOPE_OPTIONS: readonly ChoiceOption<BotMcpScope>[] = BOT_MCP_SCOPES.map((scope) => ({
   value: scope,
-  title: MCP_SCOPE_LABELS[scope],
-  description: MCP_SCOPE_DESCRIPTIONS[scope],
+  title: mcpScopeLabel(scope),
+  description: mcpScopeDescription(scope),
   leading: <Icon name={scope === "read" ? "eye" : "pencil"} size={16} />,
 }));
 
