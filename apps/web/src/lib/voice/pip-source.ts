@@ -1,6 +1,17 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
+import type { CallParticipantView } from "@aulora/core";
 import type { PipMediaKind } from "../call-pip";
 import type { VoiceSnapshot } from "./call-types";
+
+/**
+ * Whether a participant is sending a picture: the rule the call tiles use. A
+ * video track alone does not count. The peer mesh opens a video transceiver to
+ * every peer up front, so a voice-only participant still has a (frameless)
+ * video track, and showing it draws a black picture over their avatar.
+ */
+function sendsPicture(participant: CallParticipantView): boolean {
+  return participant.video || participant.sharingScreen;
+}
 
 /** What the video-element picture-in-picture shows: one participant's picture and name. */
 export interface PipSource {
@@ -27,7 +38,8 @@ export function pickPipSource(
   }
   const relayed = target.sharingScreen ? snapshot.remoteScreens.get(target.userId) : undefined;
   const candidate = relayed ?? snapshot.remoteStreams.get(target.userId) ?? null;
-  const hasPicture = candidate !== null && candidate.getVideoTracks().length > 0;
+  const hasPicture =
+    sendsPicture(target) && candidate !== null && candidate.getVideoTracks().length > 0;
   return {
     stream: hasPicture ? candidate : null,
     label: nameOf(target.userId),
@@ -64,16 +76,26 @@ export function pickPipVideoSource(
   const sharer = others.find((entry) => entry.sharingScreen);
   const speaker = others.find((entry) => snapshot.remoteSpeaking.has(entry.userId));
   const target = sharer ?? speaker ?? others[0];
-  if (target !== undefined) {
-    const relayed = target.sharingScreen ? snapshot.remoteScreens.get(target.userId) : undefined;
-    const stream = relayed ?? snapshot.remoteStreams.get(target.userId);
+  // Only people actually sending a picture are candidates, in the same order:
+  // a quiet camera beats a talker who has none.
+  const withPicture = others.filter(sendsPicture);
+  const candidates = [
+    ...withPicture.filter((entry) => entry.sharingScreen),
+    ...withPicture.filter((entry) => snapshot.remoteSpeaking.has(entry.userId)),
+    ...withPicture,
+  ];
+  for (const candidate of candidates) {
+    const relayed = candidate.sharingScreen
+      ? snapshot.remoteScreens.get(candidate.userId)
+      : undefined;
+    const stream = relayed ?? snapshot.remoteStreams.get(candidate.userId);
     const track = stream?.getVideoTracks()[0] ?? null;
     if (track !== null) {
       return {
         track,
-        kind: target.sharingScreen ? "screen" : "camera",
-        label: nameOf(target.userId),
-        muted: target.muted,
+        kind: candidate.sharingScreen ? "screen" : "camera",
+        label: nameOf(candidate.userId),
+        muted: candidate.muted,
       };
     }
   }

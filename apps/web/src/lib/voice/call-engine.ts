@@ -69,6 +69,9 @@ const SFU_RETRY_MS = 30_000;
  */
 const ICE_PRELOAD_MS = 2_000;
 
+/** The release for a hold that held nothing. */
+const NO_RELEASE = (): void => {};
+
 /**
  * The camera bitrate a single peer's copy gets at each capture size. More peers
  * mean more encodes, so the mesh policy scales this down (see
@@ -331,6 +334,7 @@ export class VoiceEngine {
       remoteScreens: this.currentRemoteScreens(),
       remoteSpeaking: this.transport === "sfu" ? this.sfuSpeaking : this.mesh.remoteSpeaking,
       attachRemoteVideo: this.attachRemoteVideo,
+      holdRemoteVideo: this.holdRemoteVideo,
       localSpeaking: this.localSpeaking,
       pending: this.pending,
       error: this.error,
@@ -364,6 +368,16 @@ export class VoiceEngine {
     userId: string,
     element: HTMLVideoElement | null,
   ): boolean => (this.transport === "sfu" ? this.sfu.attachVideo(userId, element) : false);
+
+  /**
+   * Keeps an SFU camera flowing for a picture-in-picture surface. Stable
+   * identity, like `attachRemoteVideo`. A transport switch replaces the track,
+   * so the holder re-holds the new one.
+   */
+  private readonly holdRemoteVideo = (
+    track: MediaStreamTrack,
+    size: { readonly width: number; readonly height: number },
+  ): (() => void) => this.sfu.holdVideo(track, size) ?? NO_RELEASE;
 
   /**
    * The screens to render. On the mesh this is just the relayed map. On the

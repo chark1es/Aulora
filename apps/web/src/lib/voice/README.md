@@ -66,6 +66,10 @@ the same meter on the SFU's per-user stream.
 - Subscribers: `adaptiveStream: true` and `attachRemoteVideo` binds the tile's
   `<video>` element. The SDK cannot size a `srcObject`-only element, so the new
   path attaches the real tile element; the mesh path keeps using `srcObject`.
+- Picture-in-picture: the desktop call window and the floating video show a
+  camera from outside this document, where adaptive streaming cannot see them,
+  and opening one hides the in-app tile. `holdRemoteVideo` registers the shown
+  camera as in picture-in-picture so the server keeps sending it.
 - Token: 4 h (`SFU_CALL_TOKEN_TTL_SECONDS`), re-minted five minutes before
   expiry and used to reconnect so a long call can survive a network blip.
 

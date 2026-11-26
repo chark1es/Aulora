@@ -1,6 +1,12 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { SfuAccess } from "@aulora/core";
-import type { LocalTrackPublication, RemoteTrack, RemoteVideoTrack, Room } from "livekit-client";
+import type {
+  ElementInfo,
+  LocalTrackPublication,
+  RemoteTrack,
+  RemoteVideoTrack,
+  Room,
+} from "livekit-client";
 import { createLevelMeter } from "./media";
 
 /**
@@ -178,6 +184,57 @@ export class SfuCall {
     }
     track.attach(element);
     return true;
+  }
+
+  /**
+   * Keeps a remote camera flowing while it is shown somewhere this document's
+   * elements cannot represent: the desktop call window (a second webview) or a
+   * floating video. Adaptive streaming has the server stop sending a camera
+   * that no visible element here is showing, or any camera while the app is in
+   * the background, and opening picture-in-picture hides the in-app tile and
+   * usually backgrounds the app, so the floating picture would go black. The
+   * hold registers the track as being in picture-in-picture, which LiveKit
+   * counts as visible even in the background, at the size it is drawn.
+   *
+   * Returns the release function, or `null` when the track is not one of this
+   * call's cameras (the peer mesh, a local track or a relayed screen share,
+   * none of which pause).
+   */
+  holdVideo(
+    track: MediaStreamTrack,
+    size: { readonly width: number; readonly height: number },
+  ): (() => void) | null {
+    let remote: LiveKitRemoteVideoTrack | undefined;
+    for (const candidate of this.videoTracks.values()) {
+      if (candidate.mediaStreamTrack === track) {
+        remote = candidate;
+        break;
+      }
+    }
+    if (remote === undefined) {
+      return null;
+    }
+    const held = remote;
+    const info: ElementInfo = {
+      // Never rendered: LiveKit only compares it by identity.
+      element: {},
+      width: () => size.width,
+      height: () => size.height,
+      visible: true,
+      pictureInPicture: true,
+      visibilityChangedAt: Date.now(),
+      observe: () => {},
+      stopObserving: () => {},
+    };
+    held.observeElementInfo(info);
+    let released = false;
+    return () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      held.stopObservingElementInfo(info);
+    };
   }
 
   /** Leaves the room and drops every stream. Idempotent. */

@@ -149,6 +149,7 @@ const EMPTY_SNAPSHOT: VoiceSnapshot = {
   remoteScreens: new Map(),
   remoteSpeaking: new Set(),
   attachRemoteVideo: () => false,
+  holdRemoteVideo: () => () => {},
   localSpeaking: false,
   pending: false,
   error: null,

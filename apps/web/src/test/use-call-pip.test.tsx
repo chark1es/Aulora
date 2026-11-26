@@ -103,6 +103,28 @@ const snapshot = {
   localSpeaking: true,
 } as unknown as VoiceSnapshot;
 
+/**
+ * A call where the other person has their camera on, carried by the streaming
+ * server: `holdRemoteVideo` records what the floating surface held open.
+ */
+function cameraCall() {
+  const track = { kind: "video", readyState: "live" } as MediaStreamTrack;
+  const release = vi.fn();
+  const hold = vi.fn(
+    (_track: MediaStreamTrack, _size: { width: number; height: number }) => release,
+  );
+  const camera = {
+    ...snapshot,
+    call: {
+      ...snapshot.call,
+      participants: [participant("me"), participant("them", { video: true })],
+    },
+    remoteStreams: new Map([["them", { getVideoTracks: () => [track] } as unknown as MediaStream]]),
+    holdRemoteVideo: hold,
+  } as unknown as VoiceSnapshot;
+  return { snapshot: camera, track, hold, release };
+}
+
 function setup(overrides: Partial<CallPipOptions> = {}) {
   const controls = {
     toggleMicrophone: vi.fn(),
@@ -299,6 +321,23 @@ describe("desktop window mode", () => {
     });
     fire(PIP_CLOSED_EVENT);
     expect(mocks.frames[0]?.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the camera it shows flowing until the window goes away", async () => {
+    // Adaptive streaming pauses a camera whose in-app tile is hidden; the
+    // call window is a second webview, so it has to say it is watching.
+    const camera = cameraCall();
+    const { result } = setup({ snapshot: camera.snapshot });
+    act(() => {
+      result.current.pip.toggle();
+    });
+    await waitFor(() => {
+      expect(camera.hold).toHaveBeenCalledWith(camera.track, { width: 380, height: 292 });
+    });
+    expect(camera.release).not.toHaveBeenCalled();
+    fire(PIP_CLOSED_EVENT);
+    expect(camera.release).toHaveBeenCalledTimes(1);
+    expect(camera.hold).toHaveBeenCalledTimes(1);
   });
 
   it("stops floating when the shell says the window is gone", async () => {
@@ -552,6 +591,23 @@ describe("floating video mode", () => {
     });
     expect(video.stop).toHaveBeenCalled();
     expect(result.current.pip.active).toBe(false);
+  });
+
+  it("keeps the camera it shows flowing until it is closed", async () => {
+    const camera = cameraCall();
+    const video = { setSource: vi.fn(), stop: vi.fn() };
+    mocks.startVideo.mockResolvedValue(video);
+    const { result } = setup({ snapshot: camera.snapshot });
+    act(() => {
+      result.current.pip.toggle();
+    });
+    await waitFor(() => {
+      expect(camera.hold).toHaveBeenCalledWith(camera.track, { width: 380, height: 292 });
+    });
+    act(() => {
+      result.current.pip.toggle();
+    });
+    expect(camera.release).toHaveBeenCalledTimes(1);
   });
 
   it("stays closed when the browser refuses", async () => {

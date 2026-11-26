@@ -102,6 +102,18 @@ describe("pickPipSource", () => {
     expect(source.label).toBe("Name of other");
   });
 
+  it("shows no picture for a camera that is off, even with a video track", () => {
+    const source = pickPipSource(
+      snapshot([person("me"), person("other")], {
+        streams: [["other", streamWithVideo(true)]],
+      }),
+      "me",
+      nameOf,
+    );
+    expect(source.stream).toBeNull();
+    expect(source.label).toBe("Name of other");
+  });
+
   it("shows no picture for a stream without video, and carries the muted flag", () => {
     const source = pickPipSource(
       snapshot([person("me"), person("other", { muted: true })], {
@@ -166,7 +178,7 @@ describe("pickPipVideoSource", () => {
   it("sends a remote camera when nobody shares", () => {
     const track = videoTrack();
     const source = pickPipVideoSource(
-      videoSourceSnapshot([person("me"), person("them")], {
+      videoSourceSnapshot([person("me"), person("them", { video: true })], {
         streams: [["them", streamWithTrack(track)]],
       }),
       "me",
@@ -174,6 +186,38 @@ describe("pickPipVideoSource", () => {
     );
     expect(source.track).toBe(track);
     expect(source.kind).toBe("camera");
+  });
+
+  it("ignores the frameless video track a voice-only peer still has", () => {
+    // The peer mesh opens a video transceiver to every peer, so a participant
+    // with the camera off still has a video track; sending it draws black.
+    const source = pickPipVideoSource(
+      videoSourceSnapshot([person("me"), person("them")], {
+        streams: [["them", streamWithTrack(videoTrack())]],
+      }),
+      "me",
+      nameOf,
+    );
+    expect(source.track).toBeNull();
+    expect(source.kind).toBe("none");
+    expect(source.label).toBe("Name of them");
+  });
+
+  it("prefers someone with a camera over a speaker without one", () => {
+    const camera = videoTrack();
+    const source = pickPipVideoSource(
+      videoSourceSnapshot([person("me"), person("talker"), person("viewer", { video: true })], {
+        streams: [
+          ["talker", streamWithTrack(videoTrack())],
+          ["viewer", streamWithTrack(camera)],
+        ],
+        speaking: ["talker"],
+      }),
+      "me",
+      nameOf,
+    );
+    expect(source.track).toBe(camera);
+    expect(source.label).toBe("Name of viewer");
   });
 
   it("shows your own picture when nobody else has one", () => {
