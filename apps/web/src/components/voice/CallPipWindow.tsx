@@ -85,6 +85,11 @@ export function CallPipWindow() {
     useDeadlineTick(state?.aloneDeadline ?? null),
   );
   const media = usePipMedia();
+  // The main window decides whether there is a picture (`mediaKind`); the
+  // transport only says how it would arrive. A connected loopback keeps its
+  // track after the picture goes away (a camera turned off, a voice-only
+  // call), and that track draws black, so the avatars win unless both agree.
+  const surface = state !== null && state.mediaKind !== "none" ? media.kind : "none";
   const mediaArea = useRef<HTMLDivElement | null>(null);
   const participants = state?.participants ?? [];
   const columns = participants.length <= 1 ? 1 : 2;
@@ -154,7 +159,9 @@ export function CallPipWindow() {
         title="Double-click to return to the app"
       >
         {/* The live picture. Always mounted so the track has a sink the moment
-            it arrives; it is only shown when it is the active surface. */}
+            it arrives. Until it is the active surface it is transparent rather
+            than `display: none`: it is shown only after it decodes a frame,
+            and some engines (WebKit) decode only video that is laid out. */}
         <video
           ref={media.videoRef}
           autoPlay
@@ -162,7 +169,7 @@ export function CallPipWindow() {
           playsInline
           className={cn(
             "absolute inset-0 h-full w-full bg-black object-contain",
-            media.kind !== "loopback" && "hidden",
+            surface !== "loopback" && "pointer-events-none opacity-0",
           )}
         />
         <canvas
@@ -171,7 +178,7 @@ export function CallPipWindow() {
           height={270}
           className={cn(
             "absolute inset-0 h-full w-full bg-black object-contain",
-            media.kind !== "frames" && "hidden",
+            surface !== "frames" && "hidden",
           )}
         />
 
@@ -180,7 +187,7 @@ export function CallPipWindow() {
             Waiting for the call…
           </div>
         ) : (
-          media.kind === "none" && (
+          surface === "none" && (
             // No picture: the same participant tiles the window always drew.
             <div
               className="grid h-full gap-1.5 overflow-y-auto p-2"
@@ -200,7 +207,7 @@ export function CallPipWindow() {
           )
         )}
 
-        {state !== null && media.kind !== "none" && state.speakerName !== "" && (
+        {state !== null && surface !== "none" && state.speakerName !== "" && (
           <span className="absolute left-2 top-2 flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-medium text-white">
             {state.mediaKind === "screen" && <Icon name="monitor" size={10} />}
             {state.mediaKind === "camera" && <Icon name="video" size={10} />}

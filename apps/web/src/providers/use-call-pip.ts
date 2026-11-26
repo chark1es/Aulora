@@ -115,6 +115,39 @@ export interface CallPipOptions {
 
 const IDENTITY = (userId: string): string => userId;
 
+/** The size the floating picture is drawn at, for the streaming server's layer choice. */
+const PIP_VIDEO_SIZE = { width: PIP_WIDTH, height: PIP_HEIGHT } as const;
+
+/**
+ * Holds whichever remote track the floating surface is showing, so the
+ * streaming server keeps sending it while the in-app tile is hidden (see
+ * `VoiceSnapshot.holdRemoteVideo`). Showing a new track releases the old hold.
+ */
+function createVideoHold(
+  hold: (track: MediaStreamTrack, size: typeof PIP_VIDEO_SIZE) => () => void,
+): { show(track: MediaStreamTrack | null): void; release(): void } {
+  let held: MediaStreamTrack | null = null;
+  let release: (() => void) | null = null;
+  const drop = () => {
+    release?.();
+    release = null;
+    held = null;
+  };
+  return {
+    show(track) {
+      if (track === held) {
+        return;
+      }
+      drop();
+      if (track !== null) {
+        held = track;
+        release = hold(track, PIP_VIDEO_SIZE);
+      }
+    },
+    release: drop,
+  };
+}
+
 /**
  * Picture-in-picture for the active call, in whichever form this platform has.
  * Holds the state (rather than the call dock) so the floating window survives
@@ -329,6 +362,10 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
       nameOf.current,
     );
     let lastTrack: MediaStreamTrack | null = initial.track;
+    // The window is a second webview the streaming server's subscriber cannot
+    // see, so the camera it shows is held open explicitly.
+    const held = createVideoHold(latest.current.snapshot.holdRemoteVideo);
+    held.show(initial.track);
 
     let sender: PipSenderHandle | null = null;
 
@@ -393,6 +430,7 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
         return;
       }
       lastTrack = source.track;
+      held.show(source.track);
       void sender?.transport.setTrack(source.track);
       frames?.setTrack(source.track);
     }, SOURCE_REFRESH_MS);
@@ -400,6 +438,12 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
     void listenDesktopEvent(PIP_SIGNAL_EVENT, (payload) => {
       const signal = parseLoopbackSignal(payload);
       if (signal !== null) {
+        if (signal.kind === "ready") {
+          // The window says so once it has loaded and is listening. The state
+          // sent when it was opened arrived before that, so it goes again on
+          // the next tick instead of waiting for the heartbeat.
+          sentState.current = null;
+        }
         sender?.receive(signal);
       }
     }).then((off) => {
@@ -418,6 +462,7 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
       sender?.transport.close();
       frames?.close();
       frames = null;
+      held.release();
     };
   }, [mode, desktopOpen, callActive, videoDisabled]);
 
@@ -564,11 +609,19 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
     if (!floatingVideo) {
       return;
     }
-    const timer = setInterval(() => {
-      videoRef.current?.setSource(source());
-    }, SOURCE_REFRESH_MS);
+    // The floating video's hidden element is invisible to the streaming
+    // server's subscriber too, so its camera is held open the same way.
+    const held = createVideoHold(latest.current.snapshot.holdRemoteVideo);
+    const refresh = () => {
+      const next = source();
+      held.show(next.stream?.getVideoTracks()[0] ?? null);
+      videoRef.current?.setSource(next);
+    };
+    refresh();
+    const timer = setInterval(refresh, SOURCE_REFRESH_MS);
     return () => {
       clearInterval(timer);
+      held.release();
     };
   }, [floatingVideo, source]);
 

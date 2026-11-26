@@ -24,8 +24,19 @@ const mocks = vi.hoisted(() => {
     focus: vi.fn(async () => undefined),
     snap: vi.fn(async () => undefined),
     resize: vi.fn(async () => undefined),
+    // What the picture transport reports; jsdom has no peer connection, so the
+    // tests choose it.
+    surfaceKind: "none" as "loopback" | "frames" | "none",
   };
 });
+
+vi.mock("../components/voice/use-pip-media", () => ({
+  usePipMedia: () => ({
+    kind: mocks.surfaceKind,
+    videoRef: { current: null },
+    canvasRef: { current: null },
+  }),
+}));
 
 vi.mock("../lib/desktop", () => ({
   listenDesktopEvent: mocks.listen,
@@ -91,6 +102,7 @@ async function mount(payload?: unknown) {
 }
 
 beforeEach(() => {
+  mocks.surfaceKind = "none";
   mocks.handlers.clear();
   mocks.emitTo.mockClear();
   mocks.close.mockClear();
@@ -166,6 +178,25 @@ describe("the call window", () => {
     expect(document.querySelector("audio")).toBeNull();
     // The overlay names whose picture it is.
     expect(screen.getByText("Grace")).toBeInTheDocument();
+  });
+
+  it("keeps the avatars when the main window says there is no picture", async () => {
+    // A connected loopback with a frameless track (a voice-only call, or a
+    // camera turned off) must not cover the tiles with a black video.
+    mocks.surfaceKind = "loopback";
+    await mount(state);
+    // Transparent, not `display: none`: it still has to decode its first frame.
+    expect(document.querySelector("video")?.classList.contains("opacity-0")).toBe(true);
+    expect(document.querySelector("video")?.classList.contains("hidden")).toBe(false);
+    expect(document.querySelector("canvas")?.classList.contains("hidden")).toBe(true);
+    expect(screen.getByText("Grace")).toBeInTheDocument();
+  });
+
+  it("shows the live picture when there is one", async () => {
+    mocks.surfaceKind = "loopback";
+    await mount({ ...state, mediaKind: "camera", speakerName: "Grace" });
+    expect(document.querySelector("video")?.classList.contains("opacity-0")).toBe(false);
+    expect(screen.queryByText("Ada (you)")).toBeNull();
   });
 
   it("goes back to the app when the picture is double-clicked", async () => {

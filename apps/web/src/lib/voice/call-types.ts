@@ -41,6 +41,17 @@ export interface VoiceSnapshot {
    * using {@link remoteStreams}.
    */
   readonly attachRemoteVideo: (userId: string, element: HTMLVideoElement | null) => boolean;
+  /**
+   * Keeps a remote video track flowing while a picture-in-picture surface the
+   * streaming server's subscriber cannot see (the desktop call window, a
+   * floating video) shows it at `size`. Without it, adaptive streaming pauses a
+   * camera whose in-app tile is hidden. Returns the release function; a no-op
+   * for media the peer mesh carries, which never pauses.
+   */
+  readonly holdRemoteVideo: (
+    track: MediaStreamTrack,
+    size: { readonly width: number; readonly height: number },
+  ) => () => void;
   /** Whether this device is currently transmitting speech. */
   readonly localSpeaking: boolean;
   readonly pending: boolean;
