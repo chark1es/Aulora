@@ -7,10 +7,13 @@ import type { VoiceSnapshot } from "./call-types";
  * Whether a participant is sending a picture: the rule the call tiles use. A
  * video track alone does not count. The peer mesh opens a video transceiver to
  * every peer up front, so a voice-only participant still has a (frameless)
- * video track, and showing it draws a black picture over their avatar.
+ * video track, and showing it draws a black picture over their avatar. A peer
+ * still connecting has no frames yet either.
  */
 function sendsPicture(participant: CallParticipantView): boolean {
-  return participant.video || participant.sharingScreen;
+  return (
+    (participant.video || participant.sharingScreen) && participant.connection === "connected"
+  );
 }
 
 /** What the video-element picture-in-picture shows: one participant's picture and name. */

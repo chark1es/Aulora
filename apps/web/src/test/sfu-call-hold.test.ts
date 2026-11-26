@@ -63,3 +63,35 @@ describe("SfuCall.holdVideo", () => {
     expect(camera.observeElementInfo).not.toHaveBeenCalled();
   });
 });
+
+describe("SfuCall.holdVideo with LiveKit's own track", () => {
+  it("makes a paused camera visible to the server, and hands it back on release", async () => {
+    const { RemoteVideoTrack, TrackEvent } = await import("livekit-client");
+    const media = {
+      kind: "video",
+      id: "camera",
+      enabled: true,
+      readyState: "live",
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      getSettings: () => ({}),
+    } as unknown as MediaStreamTrack;
+    // Adaptive streaming, as `sfu-call.ts` configures the media room.
+    // No receiver: nothing here reads stats.
+    const receiver = undefined as unknown as RTCRtpReceiver;
+    const remote = new RemoteVideoTrack(media, "TR_camera", receiver, {});
+    // In the background: LiveKit pauses every adaptive camera here.
+    (remote as unknown as { isInBackground: boolean }).isInBackground = true;
+    const visibility: boolean[] = [];
+    remote.on(TrackEvent.VisibilityChanged, (visible: boolean) => {
+      visibility.push(visible);
+    });
+    const call = new SfuCall();
+    (call as unknown as { videoTracks: Map<string, unknown> }).videoTracks.set("them", remote);
+
+    const release = call.holdVideo(media, { width: 380, height: 292 });
+    expect(visibility).toEqual([true]);
+    release?.();
+    expect(visibility).toEqual([true, false]);
+  });
+});

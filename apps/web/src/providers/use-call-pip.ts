@@ -438,6 +438,12 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
     void listenDesktopEvent(PIP_SIGNAL_EVENT, (payload) => {
       const signal = parseLoopbackSignal(payload);
       if (signal !== null) {
+        if (signal.kind === "ready") {
+          // The window says so once it has loaded and is listening. The state
+          // sent when it was opened arrived before that, so it goes again on
+          // the next tick instead of waiting for the heartbeat.
+          sentState.current = null;
+        }
         sender?.receive(signal);
       }
     }).then((off) => {

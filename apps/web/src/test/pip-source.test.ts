@@ -203,6 +203,20 @@ describe("pickPipVideoSource", () => {
     expect(source.label).toBe("Name of them");
   });
 
+  it("waits for a camera whose peer is still connecting, like its tile", () => {
+    const source = pickPipVideoSource(
+      videoSourceSnapshot(
+        [person("me"), person("them", { video: true, connection: "connecting" })],
+        {
+          streams: [["them", streamWithTrack(videoTrack())]],
+        },
+      ),
+      "me",
+      nameOf,
+    );
+    expect(source.kind).toBe("none");
+  });
+
   it("prefers someone with a camera over a speaker without one", () => {
     const camera = videoTrack();
     const source = pickPipVideoSource(

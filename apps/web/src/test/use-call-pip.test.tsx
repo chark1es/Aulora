@@ -366,6 +366,28 @@ describe("desktop window mode", () => {
     expect(camera.release).toHaveBeenCalledTimes(1);
   });
 
+  it("resends the call state as soon as the window says it is listening", async () => {
+    const { result } = setup();
+    act(() => {
+      result.current.pip.toggle();
+    });
+    await waitFor(() => {
+      expect(mocks.handlers.has(PIP_SIGNAL_EVENT)).toBe(true);
+    });
+    const states = () =>
+      mocks.emitTo.mock.calls.filter((call) => (call as unknown[])[1] === PIP_STATE_EVENT).length;
+    const before = states();
+    // The first state went out before the window loaded; it must not wait
+    // for the two-second heartbeat to try again.
+    fire(PIP_SIGNAL_EVENT, { kind: "ready" });
+    await waitFor(
+      () => {
+        expect(states()).toBe(before + 1);
+      },
+      { timeout: 1_000 },
+    );
+  });
+
   it("stops floating when the shell says the window is gone", async () => {
     const { result } = setup();
     act(() => {
