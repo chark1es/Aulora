@@ -31,6 +31,10 @@ export interface PipSurface {
  * keeps coming from the main window. The frame channel is registered at the same
  * time, so the fallback starts drawing the moment the main window decides the
  * loopback is not coming.
+ *
+ * The live picture is reported only once it has decoded a frame. A received
+ * track can stay empty (a paused camera, a decoder that never starts), and
+ * showing it then draws black where the avatars should be.
  */
 export function usePipMedia(): PipSurface {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -42,6 +46,16 @@ export function usePipMedia(): PipSurface {
     let unlisten: (() => void) | undefined;
     let painter: PipFramePainter | null = null;
     let receiver: PipReceiverHandle | null = null;
+    const video = videoRef.current;
+    const onDecodedFrame = () => {
+      if (!disposed && video !== null && video.videoWidth > 0) {
+        setKind((current) => (current === "loopback" ? current : "loopback"));
+      }
+    };
+    // `loadeddata` is the first decoded frame; `resize` covers a new track on
+    // an element that already had one.
+    video?.addEventListener("loadeddata", onDecodedFrame);
+    video?.addEventListener("resize", onDecodedFrame);
 
     const unregisterFrames = registerPipFrames((bytes) => {
       if (disposed) {
@@ -58,7 +72,6 @@ export function usePipMedia(): PipSurface {
           void emitDesktopEventTo(MAIN_WINDOW_LABEL, PIP_SIGNAL_EVENT, signal);
         },
         onTrack: (track) => {
-          const video = videoRef.current;
           if (video === null) {
             return;
           }
@@ -66,7 +79,6 @@ export function usePipMedia(): PipSurface {
           void video.play().catch(() => {
             // Muted autoplay is allowed; a refusal leaves the frame fallback.
           });
-          setKind("loopback");
         },
         onState: (state) => {
           if (state === "idle" || state === "failed" || state === "closed") {
@@ -90,6 +102,8 @@ export function usePipMedia(): PipSurface {
 
     return () => {
       disposed = true;
+      video?.removeEventListener("loadeddata", onDecodedFrame);
+      video?.removeEventListener("resize", onDecodedFrame);
       unlisten?.();
       receiver?.transport.close();
       receiver = null;

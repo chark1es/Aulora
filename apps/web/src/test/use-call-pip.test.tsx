@@ -340,6 +340,32 @@ describe("desktop window mode", () => {
     expect(camera.hold).toHaveBeenCalledTimes(1);
   });
 
+  it("moves the hold when the window switches to another camera", async () => {
+    const camera = cameraCall();
+    const { result, rerender, initial } = setup({ snapshot: camera.snapshot });
+    act(() => {
+      result.current.pip.toggle();
+    });
+    await waitFor(() => {
+      expect(camera.hold).toHaveBeenCalledTimes(1);
+    });
+    const next = { id: "next", kind: "video", readyState: "live" } as MediaStreamTrack;
+    rerender({
+      ...initial,
+      snapshot: {
+        ...camera.snapshot,
+        remoteStreams: new Map([
+          ["them", { getVideoTracks: () => [next] } as unknown as MediaStream],
+        ]),
+      },
+    });
+    await waitFor(() => {
+      expect(camera.hold.mock.lastCall?.[0]).toBe(next);
+    });
+    expect(camera.hold).toHaveBeenCalledTimes(2);
+    expect(camera.release).toHaveBeenCalledTimes(1);
+  });
+
   it("stops floating when the shell says the window is gone", async () => {
     const { result } = setup();
     act(() => {
