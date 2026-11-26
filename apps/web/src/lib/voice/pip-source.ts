@@ -11,9 +11,7 @@ import type { VoiceSnapshot } from "./call-types";
  * still connecting has no frames yet either.
  */
 function sendsPicture(participant: CallParticipantView): boolean {
-  return (
-    (participant.video || participant.sharingScreen) && participant.connection === "connected"
-  );
+  return (participant.video || participant.sharingScreen) && participant.connection === "connected";
 }
 
 /** What the video-element picture-in-picture shows: one participant's picture and name. */
