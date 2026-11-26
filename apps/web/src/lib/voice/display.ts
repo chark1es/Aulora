@@ -1,4 +1,4 @@
-import { streamProfile, type VoiceDeviceSettings } from "@aulora/core";
+import { type StreamFrameRate, streamProfile, type VoiceDeviceSettings } from "@aulora/core";
 import { isDesktop } from "../desktop";
 import { messageOf } from "./call-errors";
 import { openDisplayStream } from "./desktop-display";
@@ -46,7 +46,7 @@ interface ExtendedDisplayOptions extends Omit<DisplayMediaStreamOptions, "audio"
 }
 
 function captureOptions(settings: VoiceDeviceSettings): ExtendedDisplayOptions {
-  const profile = streamProfile(settings.streamQuality);
+  const profile = streamProfile(settings.streamResolution, settings.streamFrameRate);
   return {
     video: {
       width: { max: profile.width },
@@ -81,15 +81,23 @@ function hint(track: MediaStreamTrack, value: string): void {
 }
 
 /**
- * What the encoder should optimize for. Desktops and applications are `detail`:
- * text and UI edges stay sharp and the encoder trades frame rate first. The
- * `smooth` profile exists for motion (30 fps with the largest bitrate budget),
- * where a `motion` hint spends bits on movement instead of static detail.
+ * What the encoder should optimize for. At 30 fps and above the share is
+ * treated as motion (video, games, scrolling), so a `motion` hint spends bits on
+ * movement. At 15 fps the person chose sharp text over smoothness, so the hint
+ * is `detail`: UI edges stay crisp and the encoder trades frame rate first.
  */
-export function displayContentHint(
-  quality: VoiceDeviceSettings["streamQuality"],
-): "detail" | "motion" {
-  return quality === "smooth" ? "motion" : "detail";
+export function displayContentHint(frameRate: StreamFrameRate): "detail" | "motion" {
+  return frameRate >= 30 ? "motion" : "detail";
+}
+
+/**
+ * What the sender gives up when the CPU or the link is short. At 30 fps and
+ * above it uses `balanced`: WebRTC then lowers the resolution before the frame
+ * rate, instead of freezing to a slideshow. At 15 fps the share is for sharp
+ * text, so it holds the resolution.
+ */
+export function displayDegradation(frameRate: StreamFrameRate): "balanced" | "maintain-resolution" {
+  return frameRate >= 30 ? "balanced" : "maintain-resolution";
 }
 
 /**
@@ -110,10 +118,10 @@ export function desktopPickerAvailable(): boolean {
  * reason travels back as {@link DisplayCapture.notice}.
  */
 async function acquireDesktopDisplay(settings: VoiceDeviceSettings): Promise<DisplayCapture> {
-  const profile = streamProfile(settings.streamQuality);
+  const profile = streamProfile(settings.streamResolution, settings.streamFrameRate);
   const choice = await requestDisplaySource({ audioRequested: settings.streamAudio });
   const stream = await openDisplayStream(choice.source, profile);
-  hint(stream.track, displayContentHint(settings.streamQuality));
+  hint(stream.track, displayContentHint(settings.streamFrameRate));
 
   let audio: SystemAudioCapture | null = null;
   let notice: string | null = null;
@@ -157,7 +165,7 @@ export async function acquireDisplay(settings: VoiceDeviceSettings): Promise<Dis
     throw new Error("No screen track was produced");
   }
   const audio = stream.getAudioTracks()[0] ?? null;
-  hint(video, displayContentHint(settings.streamQuality));
+  hint(video, displayContentHint(settings.streamFrameRate));
   if (audio !== null) {
     hint(audio, "music");
   }

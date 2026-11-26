@@ -44,7 +44,11 @@ function meshOver(client: unknown): PeerMesh {
     getAudioTrack: () => null,
     getVideoTrack: () => null,
     isScreenSharing: () => false,
-    getScreenProfile: () => ({ maxBitrate: 0, frameRate: 0 }),
+    getScreenProfile: () => ({
+      maxBitrate: 0,
+      frameRate: 0,
+      degradationPreference: "maintain-resolution",
+    }),
     getCameraProfile: () => ({ maxBitrate: 0, frameRate: 0 }),
     getVideoCodec: () => "auto",
     onRemoteLevel: () => undefined,

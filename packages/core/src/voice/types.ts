@@ -32,7 +32,11 @@ export interface MediaDeviceInfo {
   readonly label: string;
 }
 
-export type StreamQuality = "smooth" | "balanced" | "saver";
+/** Largest size a screen or window share is captured and sent at. */
+export type StreamResolution = "720p" | "1080p" | "1440p" | "2160p";
+
+/** Frames per second a screen or window share asks for. */
+export type StreamFrameRate = 15 | 30 | 60;
 
 export type BackgroundEffect = "none" | "blur" | "image";
 
@@ -68,8 +72,10 @@ export interface VoiceDeviceSettings {
   readonly noiseGateThreshold: number;
   /** Preferred codec for screen share (text clarity); `auto` lets the browser choose. */
   readonly screenCodec: "auto" | "av1" | "vp9" | "h264";
-  /** Resolution, frame rate and bitrate budget for a screen or window stream. */
-  readonly streamQuality: StreamQuality;
+  /** Largest size a shared screen or window is sent at; smaller surfaces are not upscaled. */
+  readonly streamResolution: StreamResolution;
+  /** Frame rate a shared screen or window asks for; higher is smoother but needs more upload. */
+  readonly streamFrameRate: StreamFrameRate;
   /** Shares the audio of the captured screen, window or tab when the platform offers it. */
   readonly streamAudio: boolean;
   /** Camera background: untouched, blurred, or replaced by an image. Web and desktop only. */

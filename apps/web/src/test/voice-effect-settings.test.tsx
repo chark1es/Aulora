@@ -107,12 +107,24 @@ describe("BackgroundSettings", () => {
 });
 
 describe("StreamSettings", () => {
-  it("changes the quality and says what it means", async () => {
+  it("defaults to 1080p at 60 fps and updates resolution and frame rate independently", async () => {
     const user = userEvent.setup();
     render(<StreamSettings />);
-    expect(screen.getByText(/1080p at 30 frames/)).toBeInTheDocument();
-    await user.click(screen.getByRole("radio", { name: "Data saver" }));
-    expect(state.updateSettings).toHaveBeenCalledWith({ streamQuality: "saver" });
+    expect(screen.getByRole("radio", { name: "1080p" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "60 fps" })).toBeChecked();
+    expect(screen.getByText(/60 fps suits video, games and scrolling/)).toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: "4K" }));
+    expect(state.updateSettings).toHaveBeenLastCalledWith({ streamResolution: "2160p" });
+    await user.click(screen.getByRole("radio", { name: "15 fps" }));
+    expect(state.updateSettings).toHaveBeenLastCalledWith({ streamFrameRate: 15 });
+  });
+
+  it("describes the chosen combination", () => {
+    use({ streamResolution: "1440p", streamFrameRate: 15 });
+    render(<StreamSettings />);
+    expect(screen.getByText(/15 fps keeps text sharpest/)).toBeInTheDocument();
+    expect(screen.getByText(/1440p and 4K need a fast upload/)).toBeInTheDocument();
+    expect(screen.getByText(/Applies the next time you start sharing/)).toBeInTheDocument();
   });
 
   it("toggles whether the shared screen's sound goes along", async () => {

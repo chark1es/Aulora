@@ -5,6 +5,9 @@
 //! client draws the chosen one into a canvas it captures. Frames are pulled one
 //! per request, which keeps the cost of a share proportional to the frame rate
 //! the client asks for and stops the work the moment the client stops polling.
+//! The client keeps up to three requests in flight: each command runs on its own
+//! blocking thread, so capturing and encoding the next frames overlaps the IPC,
+//! decode and draw of the previous one.
 //!
 //! Frames travel as raw JPEG bytes behind a 16-byte header, returned as a Tauri
 //! raw IPC response. Base64 would inflate every frame by a third, allocate a
@@ -14,9 +17,12 @@
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
-use image::codecs::jpeg::JpegEncoder;
-use image::{ExtendedColorType, ImageEncoder, RgbaImage};
+use fast_image_resize::images::Image as ResizeImage;
+use fast_image_resize::{FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer};
+use image::RgbaImage;
+use jpeg_encoder::{ColorType, Encoder};
 use serde::Serialize;
+use std::cell::RefCell;
 use xcap::{Monitor, Window};
 
 /// Tile box for the picker, and the quality a tile is encoded at.
@@ -133,6 +139,39 @@ fn fit_within(width: u32, height: u32, max_width: u32, max_height: u32) -> (u32,
     }
 }
 
+thread_local! {
+    /// One resizer per blocking thread: it caches filter coefficients between
+    /// frames of the same size.
+    static RESIZER: RefCell<Resizer> = RefCell::new(Resizer::new());
+}
+
+/// Box-filter downscale of an RGBA buffer, keeping text legible at a fraction
+/// of a convolution filter's cost.
+fn downscale(image: RgbaImage, width: u32, height: u32) -> Result<Vec<u8>, String> {
+    let failed =
+        |error: &dyn std::fmt::Display| format!("Could not scale the captured frame: {error}");
+    let (source_width, source_height) = (image.width(), image.height());
+    // Built straight from the capture's own buffer, no copy.
+    let source = ResizeImage::from_vec_u8(
+        source_width,
+        source_height,
+        image.into_raw(),
+        PixelType::U8x4,
+    )
+    .map_err(|error| failed(&error))?;
+    let mut target = ResizeImage::new(width, height, PixelType::U8x4);
+    RESIZER
+        .with(|resizer| {
+            resizer.borrow_mut().resize(
+                &source,
+                &mut target,
+                &ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::Box)),
+            )
+        })
+        .map_err(|error| failed(&error))?;
+    Ok(target.into_vec())
+}
+
 /// Encodes one captured image to JPEG at the requested size.
 fn encode_jpeg(
     image: RgbaImage,
@@ -140,23 +179,21 @@ fn encode_jpeg(
     max_height: u32,
     quality: u8,
 ) -> Result<(Vec<u8>, u32, u32), String> {
-    // Scale first, while the frame is the capture's own RGBA buffer, and only
-    // then drop the alpha channel: a 4K screen is 8 million pixels, so doing
-    // the conversion (or a slow filter) at full size dominated the frame time.
-    // `thumbnail` is a box filter, which keeps text legible at a fraction of
-    // the cost of a convolution filter.
+    // Scale first, then encode the RGBA buffer directly: the encoder ignores
+    // alpha, so there is no separate RGB conversion pass. A 4K screen is 8
+    // million pixels, so any full-size pass shows up in the frame time.
     let (width, height) = fit_within(image.width(), image.height(), max_width, max_height);
-    let image = if width == image.width() && height == image.height() {
-        image
+    let pixels = if width == image.width() && height == image.height() {
+        image.into_raw()
     } else {
-        image::imageops::thumbnail(&image, width, height)
+        downscale(image, width, height)?
     };
-    // Screen captures are opaque; dropping the alpha channel cuts the encode
-    // and the JPEG size without losing anything.
-    let scaled = image::DynamicImage::ImageRgba8(image).to_rgb8();
+    let too_large = || format!("The captured frame is too large to encode ({width}×{height}).");
+    let encoder_width = u16::try_from(width).map_err(|_| too_large())?;
+    let encoder_height = u16::try_from(height).map_err(|_| too_large())?;
     let mut bytes = Vec::new();
-    JpegEncoder::new_with_quality(&mut bytes, quality)
-        .write_image(scaled.as_raw(), width, height, ExtendedColorType::Rgb8)
+    Encoder::new(&mut bytes, quality)
+        .encode(&pixels, encoder_width, encoder_height, ColorType::Rgba)
         .map_err(|error| format!("Could not encode the captured frame: {error}"))?;
     Ok((bytes, width, height))
 }

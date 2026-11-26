@@ -57,7 +57,12 @@ const WINDOW: DisplaySource = {
 };
 
 function settings(overrides: Partial<VoiceDeviceSettings> = {}): VoiceDeviceSettings {
-  return { ...DEFAULT_VOICE_SETTINGS, streamQuality: "balanced", ...overrides };
+  return {
+    ...DEFAULT_VOICE_SETTINGS,
+    streamResolution: "1080p",
+    streamFrameRate: 15,
+    ...overrides,
+  };
 }
 
 function fakeTrack(kind: "video" | "audio" = "video"): MediaStreamTrack & { stop: Mock } {
@@ -115,7 +120,7 @@ describe("acquireDisplay in the desktop shell", () => {
     expect(capture.notice).toBeNull();
     expect(bridge.openDisplayStream).toHaveBeenCalledWith(
       SCREEN,
-      streamProfile(settings().streamQuality),
+      streamProfile(settings().streamResolution, settings().streamFrameRate),
     );
     expect(bridge.openSystemAudioStream).toHaveBeenCalledWith(SCREEN.id);
     expect(getDisplayMedia).not.toHaveBeenCalled();

@@ -18,6 +18,7 @@ export interface SfuHandlers {
 export interface PublishOptions {
   readonly profile: StreamProfile;
   readonly codec: VoiceDeviceSettings["screenCodec"];
+  readonly degradation: RTCDegradationPreference;
 }
 
 export interface SfuConnection {
@@ -114,7 +115,7 @@ function lowLayer(livekit: LiveKit, profile: StreamProfile) {
     Math.round(profile.width / 2),
     Math.round(profile.height / 2),
     Math.round(profile.maxBitrate / 4),
-    Math.min(15, profile.frameRate),
+    profile.frameRate,
   );
 }
 
@@ -137,7 +138,7 @@ async function publishScreen(
       simulcast: true,
       screenShareEncoding: top.encoding,
       screenShareSimulcastLayers: [lowLayer(livekit, profile)],
-      degradationPreference: "maintain-resolution",
+      degradationPreference: options.degradation,
       backupCodec: true,
       ...(codec !== undefined ? { videoCodec: codec } : {}),
     }),

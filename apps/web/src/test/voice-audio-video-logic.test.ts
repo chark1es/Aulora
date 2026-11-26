@@ -1,6 +1,6 @@
 import { DEFAULT_VOICE_SETTINGS } from "@aulora/core";
 import { describe, expect, it } from "vitest";
-import { displayContentHint } from "../lib/voice/display";
+import { displayContentHint, displayDegradation } from "../lib/voice/display";
 import { smoothMask } from "../lib/voice/effects/segmenter";
 import { gateOpenThresholdDb, micProcessingKey } from "../lib/voice/mic-pipeline";
 import {
@@ -16,6 +16,7 @@ import {
   prefersH264ByDefault,
   screenBitrateFor,
   screenScaleFor,
+  screenTuningFor,
   tuneReceiver,
   type VideoCodecCapability,
   type VideoTuning,
@@ -306,9 +307,40 @@ describe("mesh video codec preferences", () => {
 
 describe("displayContentHint", () => {
   it("keeps detail for desktops and asks for motion only in the smooth profile", () => {
-    expect(displayContentHint("saver")).toBe("detail");
-    expect(displayContentHint("balanced")).toBe("detail");
-    expect(displayContentHint("smooth")).toBe("motion");
+    expect(displayContentHint(15)).toBe("detail");
+    expect(displayContentHint(30)).toBe("motion");
+    expect(displayContentHint(60)).toBe("motion");
+  });
+});
+
+describe("displayDegradation", () => {
+  it("lets the smooth profile trade resolution first and keeps text sharp elsewhere", () => {
+    expect(displayDegradation(60)).toBe("balanced");
+    expect(displayDegradation(30)).toBe("balanced");
+    expect(displayDegradation(15)).toBe("maintain-resolution");
+  });
+});
+
+describe("screen tuning", () => {
+  const profile = { maxBitrate: 3_500_000, frameRate: 30 } as const;
+
+  it("carries the profile's degradation preference and frame rate", () => {
+    expect(screenTuningFor({ ...profile, degradationPreference: "balanced" }, 1)).toEqual({
+      maxBitrate: 3_500_000,
+      maxFramerate: 30,
+      scaleResolutionDownBy: 1,
+      degradationPreference: "balanced",
+    });
+    expect(
+      screenTuningFor({ ...profile, degradationPreference: "maintain-resolution" }, 6)
+        .degradationPreference,
+    ).toBe("maintain-resolution");
+  });
+
+  it("thins the picture for a bigger audience without touching the frame rate", () => {
+    const tuning = screenTuningFor({ ...profile, degradationPreference: "balanced" }, 6);
+    expect(tuning.scaleResolutionDownBy).toBe(2);
+    expect(tuning.maxFramerate).toBe(30);
   });
 });
 
