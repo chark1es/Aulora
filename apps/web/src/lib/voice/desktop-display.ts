@@ -354,6 +354,35 @@ const MAX_CONSECUTIVE_FAILURES = 15;
 export const FAILURE_WINDOW_MS = 2_000;
 
 /**
+ * Failures of one kind in a row. Capture and draw failures are counted apart,
+ * so frames that keep arriving cannot hide a surface that never manages to
+ * draw them (a frozen share that never ends).
+ */
+function failureStreak() {
+  let count = 0;
+  let since: number | null = null;
+  return {
+    reset() {
+      count = 0;
+      since = null;
+    },
+    /** Records one failure; true once the streak is long enough to give up. */
+    record(now: number): boolean {
+      count += 1;
+      since ??= now;
+      return count >= MAX_CONSECUTIVE_FAILURES && now - since >= FAILURE_WINDOW_MS;
+    },
+  };
+}
+
+/**
+ * How early a capture may start. Timers can fire a fraction of a millisecond
+ * before their deadline, and re-arming for that remainder costs a clamped 4 ms
+ * nested timer, which alone caps a 60 fps share near 50.
+ */
+const TIMER_SLACK_MS = 1;
+
+/**
  * Capture requests allowed in flight at once. The shell runs each on its own
  * blocking thread, so three keep the next frames' capture and encode (about 25
  * to 40 ms each) overlapped with the current frame's IPC, decode and draw, which
@@ -467,10 +496,12 @@ export async function openDisplayStream(
 
   let closed = false;
   let timer: number | null = null;
-  let failures = 0;
-  let failingSince: number | null = null;
+  const captureFailures = failureStreak();
+  const drawFailures = failureStreak();
   let inFlight = 0;
-  let lastStart = performance.now();
+  // When the next capture is due. It advances by whole intervals so the pace
+  // does not drift with timer jitter.
+  let nextDue = performance.now() + interval;
   // Requests are numbered in the order they start; the first frame was 0.
   let nextRequest = 1;
   let drawn: FrameStamp = { request: 0, capture: first.sequence ?? 0 };
@@ -490,22 +521,11 @@ export async function openDisplayStream(
     track.stop();
   };
 
-  const recovered = () => {
-    failures = 0;
-    failingSince = null;
-  };
-
-  const fail = () => {
-    failures += 1;
-    const now = performance.now();
-    failingSince ??= now;
-    if (
-      !closed &&
-      failures >= MAX_CONSECUTIVE_FAILURES &&
-      now - failingSince >= FAILURE_WINDOW_MS
-    ) {
-      // The source is gone (a closed window). Ending the track tells the
-      // share to tear down instead of showing a frozen picture.
+  const fail = (streak: ReturnType<typeof failureStreak>) => {
+    if (streak.record(performance.now()) && !closed) {
+      // The source is gone (a closed window) or its frames cannot be drawn.
+      // Ending the track tells the share to tear down instead of showing a
+      // frozen picture.
       stop();
       track.dispatchEvent(new Event("ended"));
     }
@@ -527,9 +547,9 @@ export async function openDisplayStream(
         drawn = stamp;
         try {
           await surface.draw(frame);
-          recovered();
+          drawFailures.reset();
         } catch {
-          fail();
+          fail(drawFailures);
         }
       }
     } finally {
@@ -552,18 +572,23 @@ export async function openDisplayStream(
     const request = nextRequest;
     nextRequest += 1;
     inFlight += 1;
-    lastStart = performance.now();
+    const now = performance.now();
+    nextDue += interval;
+    if (nextDue <= now) {
+      // A slot was missed (the cap was full): skip it rather than burst.
+      nextDue = now + interval;
+    }
     captureFrame(source.id, profile.width, profile.height).then(
       (frame) => {
         inFlight -= 1;
         // The source is alive, even if this frame turns out to be stale.
-        recovered();
+        captureFailures.reset();
         deliver(request, frame);
         pump();
       },
       () => {
         inFlight -= 1;
-        fail();
+        fail(captureFailures);
         pump();
       },
     );
@@ -574,12 +599,12 @@ export async function openDisplayStream(
     if (closed || timer !== null || inFlight >= MAX_CAPTURES_IN_FLIGHT) {
       return;
     }
-    const wait = lastStart + interval - performance.now();
-    if (wait > 0) {
+    const wait = nextDue - performance.now();
+    if (wait > TIMER_SLACK_MS) {
       timer = window.setTimeout(() => {
         timer = null;
         pump();
-      }, wait);
+      }, Math.ceil(wait));
       return;
     }
     launch();

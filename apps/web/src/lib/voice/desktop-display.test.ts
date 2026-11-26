@@ -479,6 +479,52 @@ describe("openDisplayStream", () => {
     stream.stop();
   });
 
+  it("ends a share whose frames keep arriving but never draw", async () => {
+    vi.useFakeTimers();
+    const { track, surface, createSurface } = harness();
+    surface.draw.mockImplementation(async () => {
+      if (surface.draw.mock.calls.length > 1) {
+        throw new Error("undecodable");
+      }
+    });
+    const captureFrame = vi.fn(async () => FRAME);
+
+    await openDisplayStream(SOURCE, PROFILE, { captureFrame, createSurface });
+    await vi.advanceTimersByTimeAsync(4000);
+
+    expect(track.dispatchEvent).toHaveBeenCalledTimes(1);
+    expect(track.dispatchEvent.mock.calls[0]?.[0]).toMatchObject({ type: "ended" });
+  });
+
+  it("keeps a 60 fps pace when timers fire a little early", async () => {
+    vi.useFakeTimers();
+    const { createSurface } = harness();
+    const captureFrame = vi.fn(async () => FRAME);
+    // Browsers may fire a 16.67 ms timer after 16 ms, and clamp a short nested
+    // timer to 4 ms.
+    const realSetTimeout = window.setTimeout.bind(window);
+    const early = vi
+      .spyOn(window, "setTimeout")
+      .mockImplementation(((handler: TimerHandler, ms?: number) =>
+        realSetTimeout(
+          handler,
+          (ms ?? 0) < 4 ? 4 : Math.floor(ms ?? 0) - 1,
+        )) as typeof window.setTimeout);
+
+    const stream = await openDisplayStream(
+      SOURCE,
+      { ...PROFILE, frameRate: 60 },
+      { captureFrame, createSurface },
+    );
+    await vi.advanceTimersByTimeAsync(1000);
+    stream.stop();
+    early.mockRestore();
+
+    // About 60 captures a second, never bursting past the frame rate.
+    expect(captureFrame.mock.calls.length).toBeGreaterThanOrEqual(58);
+    expect(captureFrame.mock.calls.length).toBeLessThanOrEqual(62);
+  });
+
   it("neither draws nor captures after stop", async () => {
     vi.useFakeTimers();
     const { track, surface, createSurface } = harness();

@@ -330,6 +330,17 @@ pub fn list_sources() -> Result<Vec<CaptureSource>, String> {
 /// Wrapping counter of completed grabs, written into each frame header.
 static CAPTURE_SEQUENCE: AtomicU16 = AtomicU16::new(1);
 
+/// The next grab sequence. Zero is skipped on wraparound: the client reads it
+/// as "unordered", which is what older shells send.
+fn next_sequence(counter: &AtomicU16) -> u16 {
+    loop {
+        let sequence = counter.fetch_add(1, Ordering::Relaxed);
+        if sequence != 0 {
+            return sequence;
+        }
+    }
+}
+
 /// Captures one frame of `source_id` as raw header-plus-JPEG bytes, scaled to
 /// fit `max_width`×`max_height` (either may be zero for no limit). Sources are
 /// looked up again on every frame so a closed window reports a clear error
@@ -355,7 +366,7 @@ pub fn capture_frame_bytes(
     }
     .map_err(|error| format!("Could not capture that source: {error}"))?;
     // Stamped right after the grab, so it orders frames by capture time.
-    let sequence = CAPTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let sequence = next_sequence(&CAPTURE_SEQUENCE);
 
     frame_bytes(image, max_width, max_height, FRAME_QUALITY, sequence)
 }
@@ -570,6 +581,14 @@ mod tests {
         assert_eq!((frame.width, frame.height), (200, 100));
         let bytes = BASE64.decode(frame.data).expect("base64");
         assert_eq!(&bytes[..2], &[0xFF, 0xD8], "JPEG start of image");
+    }
+
+    #[test]
+    fn grab_sequences_wrap_past_zero() {
+        let counter = AtomicU16::new(u16::MAX);
+        assert_eq!(next_sequence(&counter), u16::MAX);
+        assert_eq!(next_sequence(&counter), 1);
+        assert_eq!(next_sequence(&counter), 2);
     }
 
     #[test]
