@@ -75,7 +75,7 @@ If the connection to the other people stays poor, Aulora lowers your camera qual
 
 - **Noise suppression** has three levels. *Standard* uses your browser's built-in filter. *Enhanced* runs a small AI model on your device that removes keyboard clatter, fans and room noise while keeping your voice. It needs a little more processing power and is available in the web and desktop apps. Where it cannot run, Standard is used and the settings say so.
 - **Background** blurs the room behind you or replaces it with a built-in image or a picture of your own. It runs entirely on your device, so your camera picture is not sent anywhere to do this. It is available in the web and desktop apps and needs WebGL 2.
-- **Resolution** and **Frame rate** set how sharp and smooth a shared screen is. Resolution is 720p, 1080p (the default), 1440p or 4K; frame rate is 15, 30 or 60 fps (the default). 60 fps suits video, games and scrolling, while 15 fps keeps text sharpest and is easiest on your connection. 1440p and 4K need a fast upload.
+- **Resolution** and **Frame rate** set how sharp and smooth a shared screen is. Resolution is 720p, 1080p (the default), 1440p or 4K; frame rate is 15, 30 or 60 fps (the default). 60 fps suits video, games and scrolling, while 15 fps keeps text sharpest and is easiest on your connection. At 30 and 60 fps, a busy computer or connection lowers the sharpness to keep the motion smooth; at 15 fps it keeps text sharp instead. 1440p and 4K need a fast upload.
 
 ### Sharing a screen or window
 

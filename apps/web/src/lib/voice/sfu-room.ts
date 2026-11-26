@@ -136,14 +136,21 @@ export function lowLayerSize(
   return { width: Math.max(2, Math.round(width / 2)), height: Math.max(2, Math.round(height / 2)) };
 }
 
-/** A lower simulcast layer so a viewer on a weak link gets a usable picture. */
+/**
+ * A lower simulcast layer so a viewer on a weak link gets a usable picture. It
+ * tops out at 30 fps: on a quarter of the bitrate, 60 frames would each be
+ * blockier, and the extra encode work is mostly spent on a layer few receive.
+ */
+const LOW_LAYER_MAX_FRAME_RATE = 30;
+
+/** The low simulcast layer: half the sent size, a quarter of the bitrate. */
 function lowLayer(livekit: LiveKit, profile: StreamProfile, track: MediaStreamTrack) {
   const { width, height } = lowLayerSize(profile, track.getSettings());
   return new livekit.VideoPreset(
     width,
     height,
     Math.round(profile.maxBitrate / 4),
-    profile.frameRate,
+    Math.min(LOW_LAYER_MAX_FRAME_RATE, profile.frameRate),
   );
 }
 

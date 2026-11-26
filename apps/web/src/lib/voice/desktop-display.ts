@@ -393,7 +393,13 @@ function canvasSurface(width: number, height: number): FrameSurface | null {
       }
     },
     captureStream(frameRate) {
-      let candidate = canvas.captureStream(0).getVideoTracks()[0] as FrameTrack | undefined;
+      let candidate: FrameTrack | undefined;
+      try {
+        candidate = canvas.captureStream(0).getVideoTracks()[0] as FrameTrack | undefined;
+      } catch {
+        // An engine that rejects a zero frame rate takes the timed path below.
+        candidate = undefined;
+      }
       if (candidate !== undefined && typeof candidate.requestFrame === "function") {
         manual = true;
         // Emit the frame that is already painted.

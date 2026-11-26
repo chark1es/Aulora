@@ -250,21 +250,31 @@ const DEFAULT_STREAM_SIZE: StreamSize = {
   bitrates: { at15: 2_200_000, at30: 3_500_000, at60: 5_000_000 },
 };
 
-const STREAM_SIZES = new Map<StreamResolution, StreamSize>([
-  [
-    "720p",
-    { width: 1280, height: 720, bitrates: { at15: 1_200_000, at30: 2_000_000, at60: 3_000_000 } },
-  ],
-  ["1080p", DEFAULT_STREAM_SIZE],
-  [
-    "1440p",
-    { width: 2560, height: 1440, bitrates: { at15: 3_500_000, at30: 5_500_000, at60: 8_000_000 } },
-  ],
-  [
-    "2160p",
-    { width: 3840, height: 2160, bitrates: { at15: 6_000_000, at30: 9_000_000, at60: 13_000_000 } },
-  ],
-]);
+/** Every resolution must have an entry: a new one fails to compile until it does. */
+const STREAM_SIZE_TABLE = {
+  "720p": {
+    width: 1280,
+    height: 720,
+    bitrates: { at15: 1_200_000, at30: 2_000_000, at60: 3_000_000 },
+  },
+  "1080p": DEFAULT_STREAM_SIZE,
+  "1440p": {
+    width: 2560,
+    height: 1440,
+    bitrates: { at15: 3_500_000, at30: 5_500_000, at60: 8_000_000 },
+  },
+  "2160p": {
+    width: 3840,
+    height: 2160,
+    bitrates: { at15: 6_000_000, at30: 9_000_000, at60: 13_000_000 },
+  },
+} satisfies Record<StreamResolution, StreamSize>;
+
+// Looked up through a Map so an untyped value can never reach object keys.
+const STREAM_SIZES = new Map(Object.entries(STREAM_SIZE_TABLE)) as ReadonlyMap<
+  StreamResolution,
+  StreamSize
+>;
 
 export function streamProfile(
   resolution: StreamResolution,

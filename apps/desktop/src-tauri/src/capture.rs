@@ -148,8 +148,8 @@ fn fit_within(width: u32, height: u32, max_width: u32, max_height: u32) -> (u32,
 }
 
 thread_local! {
-    /// One resizer per blocking thread: it caches filter coefficients between
-    /// frames of the same size.
+    /// One resizer per blocking thread, so its scratch buffers are reused from
+    /// frame to frame instead of reallocated.
     static RESIZER: RefCell<Resizer> = RefCell::new(Resizer::new());
 }
 
