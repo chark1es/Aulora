@@ -97,7 +97,8 @@ export function usePipMedia(): PipSurface {
             void emitDesktopEventTo(MAIN_WINDOW_LABEL, PIP_SIGNAL_EVENT, signal);
           },
           onTrack: (track) => {
-            if (video === null) {
+            // A late event from a receiver being torn down is not this window's.
+            if (disposed || video === null) {
               return;
             }
             // A new stream has to decode its own first frame before it is
@@ -109,6 +110,9 @@ export function usePipMedia(): PipSurface {
             });
           },
           onState: (state) => {
+            if (disposed) {
+              return;
+            }
             if (state === "idle" || state === "failed" || state === "closed") {
               setKind((current) => (current === "loopback" ? "none" : current));
             }
