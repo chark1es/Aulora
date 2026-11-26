@@ -10,7 +10,10 @@ import { screenBitrateFor } from "../lib/voice/peer-mesh";
 import { ScreenShare, type ScreenShareHost } from "../lib/voice/screen-share";
 import type { SfuConnection, SfuConnector, SfuHandlers } from "../lib/voice/sfu-room";
 
-const display = vi.hoisted(() => ({ acquireDisplay: vi.fn() }));
+const display = vi.hoisted(() => ({
+  acquireDisplay: vi.fn(),
+  displayDegradation: vi.fn(() => "maintain-resolution"),
+}));
 vi.mock("../lib/voice/display", () => display);
 
 const ACCESS: SfuAccess = { url: "wss://stream.example.com", token: "t", canPublish: true };
@@ -130,6 +133,10 @@ describe("ScreenShare mesh delivery", () => {
     r.roster.participants = [person("me"), person("a", { sfu: true }), person("b")];
     await r.share.start();
     expect(r.connection.publish).toHaveBeenCalledTimes(1);
+    expect(r.connection.publish).toHaveBeenCalledWith(
+      capture,
+      expect.objectContaining({ degradation: "maintain-resolution" }),
+    );
     expect(r.share.trackForPeer("a")).toBeNull();
     expect(r.share.trackForPeer("b")).toBe(capture.video);
   });

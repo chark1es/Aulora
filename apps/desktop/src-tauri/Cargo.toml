@@ -31,9 +31,16 @@ serde_json = "1"
 # 2024 raises the toolchain floor to Rust 1.85. 0.4 needs only libdbus and libxcb
 # and keeps the 1.77.2 minimum.
 xcap = "0.4.1"
-# JPEG encoding for thumbnails and frames. `xcap` already pulls `image` in, so
-# this adds only the codec, not a second copy of the crate.
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
+# `xcap` hands captures over as `image::RgbaImage`, so the crate stays for that
+# type only; its own codecs and resizer are too slow for live frames.
+image = { version = "0.25", default-features = false }
+# Frame encoding: JPEG that takes RGBA directly (about 4x faster than `image`'s
+# encoder on x86 with AVX2, where its SIMD path runs; scalar but still faster on
+# ARM) and a SIMD box-filter downscale (about 4x faster than
+# `imageops::thumbnail`). Both need Rust 1.87, below what `image` 0.25 already
+# asks.
+jpeg-encoder = { version = "0.7.1", features = ["simd"] }
+fast_image_resize = { version = "6.2.0", default-features = false, features = ["std"] }
 base64 = "0.22"
 
 # System audio capture, one backend per platform (see src/capture_audio/).
@@ -82,3 +89,22 @@ opt-level = "s"
 panic = "abort"
 strip = true
 incremental = false
+
+# The shell builds at opt-level "s" (and dev at 0), which would cripple the
+# per-frame capture, resize and JPEG hot path; keep those crates at full speed.
+[profile.release.package.jpeg-encoder]
+opt-level = 3
+[profile.release.package.fast_image_resize]
+opt-level = 3
+[profile.release.package.image]
+opt-level = 3
+[profile.release.package.xcap]
+opt-level = 3
+[profile.dev.package.jpeg-encoder]
+opt-level = 3
+[profile.dev.package.fast_image_resize]
+opt-level = 3
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.xcap]
+opt-level = 3

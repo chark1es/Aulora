@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { SfuAccess, VoiceDeviceSettings } from "@aulora/core";
 import { streamProfile } from "@aulora/core";
-import type { DisplayCapture } from "./display";
+import { type DisplayCapture, displayDegradation } from "./display";
 import { connectLiveKit, type SfuConnection, type SfuConnector } from "./sfu-room";
 
 /** How soon a dropped viewer connection may be retried, so a down server is not hammered. */
@@ -104,8 +104,9 @@ export class ScreenStreamer {
     }
     try {
       await connection.publish(capture, {
-        profile: streamProfile(settings.streamQuality),
+        profile: streamProfile(settings.streamResolution, settings.streamFrameRate),
         codec: settings.screenCodec,
+        degradation: displayDegradation(settings.streamFrameRate),
       });
       this.publishing = true;
       return true;

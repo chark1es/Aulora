@@ -5,6 +5,9 @@
 //! client draws the chosen one into a canvas it captures. Frames are pulled one
 //! per request, which keeps the cost of a share proportional to the frame rate
 //! the client asks for and stops the work the moment the client stops polling.
+//! The client keeps up to three requests in flight: each command runs on its own
+//! blocking thread, so capturing and encoding the next frames overlaps the IPC,
+//! decode and draw of the previous one.
 //!
 //! Frames travel as raw JPEG bytes behind a 16-byte header, returned as a Tauri
 //! raw IPC response. Base64 would inflate every frame by a third, allocate a
@@ -14,9 +17,13 @@
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
-use image::codecs::jpeg::JpegEncoder;
-use image::{ExtendedColorType, ImageEncoder, RgbaImage};
+use fast_image_resize::images::Image as ResizeImage;
+use fast_image_resize::{FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer};
+use image::RgbaImage;
+use jpeg_encoder::{ColorType, Encoder};
 use serde::Serialize;
+use std::cell::RefCell;
+use std::sync::atomic::{AtomicU16, Ordering};
 use xcap::{Monitor, Window};
 
 /// Tile box for the picker, and the quality a tile is encoded at.
@@ -27,20 +34,27 @@ const THUMBNAIL_QUALITY: u8 = 60;
 /// Frame quality: sharp enough for text, small enough to cross the IPC bridge.
 const FRAME_QUALITY: u8 = 72;
 
-/// Magic, version, format byte and two sizes: the raw frame prefix. The
-/// web client validates these before handing the rest to the image decoder.
+/// Magic, version, format byte, capture sequence and two sizes: the raw frame
+/// prefix. The web client validates these before handing the rest to the image
+/// decoder.
 pub const FRAME_MAGIC: [u8; 4] = *b"AULF";
 pub const FRAME_VERSION: u8 = 1;
 pub const FRAME_FORMAT_JPEG: u8 = 1;
 pub const FRAME_HEADER_BYTES: usize = 16;
 
-/// The header a frame body starts with. Sizes are little endian so the webview
-/// reads them with `DataView.getUint32(offset, true)`.
-fn frame_header(width: u32, height: u32) -> [u8; FRAME_HEADER_BYTES] {
+/// The header a frame body starts with. Numbers are little endian so the
+/// webview reads them with `DataView.getUint16/getUint32(offset, true)`.
+/// Bytes 6..8 carry a wrapping capture sequence: the client keeps several
+/// requests in flight, and a request that stalls before its grab can return a
+/// newer picture than one that started after it, so frames are ordered by when
+/// the pixels were taken rather than by when they were asked for. Older shells
+/// left these bytes zero, which the client treats as unordered.
+fn frame_header(width: u32, height: u32, sequence: u16) -> [u8; FRAME_HEADER_BYTES] {
     let mut header = [0u8; FRAME_HEADER_BYTES];
     header[..4].copy_from_slice(&FRAME_MAGIC);
     header[4] = FRAME_VERSION;
     header[5] = FRAME_FORMAT_JPEG;
+    header[6..8].copy_from_slice(&sequence.to_le_bytes());
     header[8..12].copy_from_slice(&width.to_le_bytes());
     header[12..16].copy_from_slice(&height.to_le_bytes());
     header
@@ -133,6 +147,44 @@ fn fit_within(width: u32, height: u32, max_width: u32, max_height: u32) -> (u32,
     }
 }
 
+thread_local! {
+    /// One resizer per blocking thread, so its scratch buffers are reused from
+    /// frame to frame instead of reallocated.
+    static RESIZER: RefCell<Resizer> = RefCell::new(Resizer::new());
+}
+
+/// Box-filter downscale of an RGBA buffer, keeping text legible at a fraction
+/// of a convolution filter's cost.
+fn downscale(image: RgbaImage, width: u32, height: u32) -> Result<Vec<u8>, String> {
+    let failed =
+        |error: &dyn std::fmt::Display| format!("Could not scale the captured frame: {error}");
+    let (source_width, source_height) = (image.width(), image.height());
+    // Built straight from the capture's own buffer, no copy.
+    let source = ResizeImage::from_vec_u8(
+        source_width,
+        source_height,
+        image.into_raw(),
+        PixelType::U8x4,
+    )
+    .map_err(|error| failed(&error))?;
+    let mut target = ResizeImage::new(width, height, PixelType::U8x4);
+    RESIZER
+        .with(|resizer| {
+            resizer.borrow_mut().resize(
+                &source,
+                &mut target,
+                // Screens are opaque, and on Windows 8+ GDI leaves the fourth
+                // byte unset (often zero): premultiplying by it would turn the
+                // whole picture black.
+                &ResizeOptions::new()
+                    .resize_alg(ResizeAlg::Convolution(FilterType::Box))
+                    .use_alpha(false),
+            )
+        })
+        .map_err(|error| failed(&error))?;
+    Ok(target.into_vec())
+}
+
 /// Encodes one captured image to JPEG at the requested size.
 fn encode_jpeg(
     image: RgbaImage,
@@ -140,23 +192,21 @@ fn encode_jpeg(
     max_height: u32,
     quality: u8,
 ) -> Result<(Vec<u8>, u32, u32), String> {
-    // Scale first, while the frame is the capture's own RGBA buffer, and only
-    // then drop the alpha channel: a 4K screen is 8 million pixels, so doing
-    // the conversion (or a slow filter) at full size dominated the frame time.
-    // `thumbnail` is a box filter, which keeps text legible at a fraction of
-    // the cost of a convolution filter.
+    // Scale first, then encode the RGBA buffer directly: the encoder ignores
+    // alpha, so there is no separate RGB conversion pass. A 4K screen is 8
+    // million pixels, so any full-size pass shows up in the frame time.
     let (width, height) = fit_within(image.width(), image.height(), max_width, max_height);
-    let image = if width == image.width() && height == image.height() {
-        image
+    let pixels = if width == image.width() && height == image.height() {
+        image.into_raw()
     } else {
-        image::imageops::thumbnail(&image, width, height)
+        downscale(image, width, height)?
     };
-    // Screen captures are opaque; dropping the alpha channel cuts the encode
-    // and the JPEG size without losing anything.
-    let scaled = image::DynamicImage::ImageRgba8(image).to_rgb8();
+    let too_large = || format!("The captured frame is too large to encode ({width}×{height}).");
+    let encoder_width = u16::try_from(width).map_err(|_| too_large())?;
+    let encoder_height = u16::try_from(height).map_err(|_| too_large())?;
     let mut bytes = Vec::new();
-    JpegEncoder::new_with_quality(&mut bytes, quality)
-        .write_image(scaled.as_raw(), width, height, ExtendedColorType::Rgb8)
+    Encoder::new(&mut bytes, quality)
+        .encode(&pixels, encoder_width, encoder_height, ColorType::Rgba)
         .map_err(|error| format!("Could not encode the captured frame: {error}"))?;
     Ok((bytes, width, height))
 }
@@ -185,10 +235,11 @@ pub fn frame_bytes(
     max_width: u32,
     max_height: u32,
     quality: u8,
+    sequence: u16,
 ) -> Result<Vec<u8>, String> {
     let (jpeg, width, height) = encode_jpeg(image, max_width, max_height, quality)?;
     let mut body = Vec::with_capacity(FRAME_HEADER_BYTES + jpeg.len());
-    body.extend_from_slice(&frame_header(width, height));
+    body.extend_from_slice(&frame_header(width, height, sequence));
     body.extend_from_slice(&jpeg);
     Ok(body)
 }
@@ -276,6 +327,20 @@ pub fn list_sources() -> Result<Vec<CaptureSource>, String> {
     Ok(sources)
 }
 
+/// Wrapping counter of completed grabs, written into each frame header.
+static CAPTURE_SEQUENCE: AtomicU16 = AtomicU16::new(1);
+
+/// The next grab sequence. Zero is skipped on wraparound: the client reads it
+/// as "unordered", which is what older shells send.
+fn next_sequence(counter: &AtomicU16) -> u16 {
+    loop {
+        let sequence = counter.fetch_add(1, Ordering::Relaxed);
+        if sequence != 0 {
+            return sequence;
+        }
+    }
+}
+
 /// Captures one frame of `source_id` as raw header-plus-JPEG bytes, scaled to
 /// fit `max_width`×`max_height` (either may be zero for no limit). Sources are
 /// looked up again on every frame so a closed window reports a clear error
@@ -300,8 +365,10 @@ pub fn capture_frame_bytes(
             .capture_image(),
     }
     .map_err(|error| format!("Could not capture that source: {error}"))?;
+    // Stamped right after the grab, so it orders frames by capture time.
+    let sequence = next_sequence(&CAPTURE_SEQUENCE);
 
-    frame_bytes(image, max_width, max_height, FRAME_QUALITY)
+    frame_bytes(image, max_width, max_height, FRAME_QUALITY, sequence)
 }
 
 /// Whether the OS lets Aulora read the screen, and how to grant it.
@@ -517,12 +584,35 @@ mod tests {
     }
 
     #[test]
+    fn grab_sequences_wrap_past_zero() {
+        let counter = AtomicU16::new(u16::MAX);
+        assert_eq!(next_sequence(&counter), u16::MAX);
+        assert_eq!(next_sequence(&counter), 1);
+        assert_eq!(next_sequence(&counter), 2);
+    }
+
+    #[test]
+    fn downscaling_ignores_an_unset_alpha_byte() {
+        // Windows GDI leaves the fourth byte zero; the picture must survive.
+        let source = RgbaImage::from_pixel(400, 200, image::Rgba([200, 120, 40, 0]));
+        let pixels = downscale(source, 200, 100).expect("downscale");
+        assert_eq!(pixels.len(), 200 * 100 * 4);
+        let expected = [200, 120, 40];
+        for (index, value) in pixels.iter().enumerate() {
+            if let Some(channel) = expected.get(index % 4) {
+                assert_eq!(value, channel, "colour byte {index}");
+            }
+        }
+    }
+
+    #[test]
     fn raw_frames_carry_a_parsable_header_and_jpeg_body() {
         let source = RgbaImage::from_pixel(400, 200, image::Rgba([10, 20, 30, 255]));
-        let frame = frame_bytes(source, 200, 100, FRAME_QUALITY).expect("frame");
+        let frame = frame_bytes(source, 200, 100, FRAME_QUALITY, 0xBEEF).expect("frame");
         assert_eq!(&frame[..4], &FRAME_MAGIC);
         assert_eq!(frame[4], FRAME_VERSION);
         assert_eq!(frame[5], FRAME_FORMAT_JPEG);
+        assert_eq!(u16::from_le_bytes([frame[6], frame[7]]), 0xBEEF);
         let width = u32::from_le_bytes(frame[8..12].try_into().expect("width"));
         let height = u32::from_le_bytes(frame[12..16].try_into().expect("height"));
         assert_eq!((width, height), (200, 100));

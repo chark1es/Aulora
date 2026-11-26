@@ -18,6 +18,7 @@ export interface SfuHandlers {
 export interface PublishOptions {
   readonly profile: StreamProfile;
   readonly codec: VoiceDeviceSettings["screenCodec"];
+  readonly degradation: RTCDegradationPreference;
 }
 
 export interface SfuConnection {
@@ -108,13 +109,48 @@ function listen(livekit: LiveKit, room: LiveKitRoom, handlers: SfuHandlers): Scr
   return collector;
 }
 
-/** A lower simulcast layer so a viewer on a weak link gets a usable picture. */
-function lowLayer(livekit: LiveKit, profile: StreamProfile) {
+/**
+ * The low simulcast layer's size: half of what is actually sent. The profile is
+ * only a ceiling, so a 1080p screen shared under a 4K setting is sent at 1080p,
+ * and halving the ceiling would give a "low" layer as large as the top one (a
+ * second full-size encode on a smaller budget). The source's own size, fitted
+ * into the ceiling, is halved instead; the ceiling stands in when the track
+ * does not report a size.
+ */
+export function lowLayerSize(
+  profile: StreamProfile,
+  source: { readonly width?: number; readonly height?: number },
+): { width: number; height: number } {
+  let width = profile.width;
+  let height = profile.height;
+  if (
+    source.width !== undefined &&
+    source.height !== undefined &&
+    source.width > 0 &&
+    source.height > 0
+  ) {
+    const scale = Math.min(1, profile.width / source.width, profile.height / source.height);
+    width = source.width * scale;
+    height = source.height * scale;
+  }
+  return { width: Math.max(2, Math.round(width / 2)), height: Math.max(2, Math.round(height / 2)) };
+}
+
+/**
+ * A lower simulcast layer so a viewer on a weak link gets a usable picture. It
+ * tops out at 30 fps: on a quarter of the bitrate, 60 frames would each be
+ * blockier, and the extra encode work is mostly spent on a layer few receive.
+ */
+const LOW_LAYER_MAX_FRAME_RATE = 30;
+
+/** The low simulcast layer: half the sent size, a quarter of the bitrate. */
+function lowLayer(livekit: LiveKit, profile: StreamProfile, track: MediaStreamTrack) {
+  const { width, height } = lowLayerSize(profile, track.getSettings());
   return new livekit.VideoPreset(
-    Math.round(profile.width / 2),
-    Math.round(profile.height / 2),
+    width,
+    height,
     Math.round(profile.maxBitrate / 4),
-    Math.min(15, profile.frameRate),
+    Math.min(LOW_LAYER_MAX_FRAME_RATE, profile.frameRate),
   );
 }
 
@@ -136,8 +172,8 @@ async function publishScreen(
       stream: "screen",
       simulcast: true,
       screenShareEncoding: top.encoding,
-      screenShareSimulcastLayers: [lowLayer(livekit, profile)],
-      degradationPreference: "maintain-resolution",
+      screenShareSimulcastLayers: [lowLayer(livekit, profile, capture.video)],
+      degradationPreference: options.degradation,
       backupCodec: true,
       ...(codec !== undefined ? { videoCodec: codec } : {}),
     }),

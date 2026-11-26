@@ -55,8 +55,8 @@ export interface PeerMeshHost {
   getVideoTrack(peerId: string): MediaStreamTrack | null;
   /** Whether the track returned for this peer is a screen share (tunes the encoder). */
   isScreenSharing(peerId: string): boolean;
-  /** The chosen stream quality: the most a single viewer's copy may use. */
-  getScreenProfile(): ScreenBudget;
+  /** The chosen screen-share budget: the most a single viewer's copy may use. */
+  getScreenProfile(): ScreenProfile;
   /** The camera the user asked for: the budget a single peer would get. */
   getCameraProfile(): ScreenBudget;
   /**
@@ -75,6 +75,11 @@ export type VideoCodecPreference = VoiceDeviceSettings["screenCodec"];
 export interface ScreenBudget {
   readonly maxBitrate: number;
   readonly frameRate: number;
+}
+
+/** A screen share's budget plus what the encoder gives up under pressure. */
+export interface ScreenProfile extends ScreenBudget {
+  readonly degradationPreference: RTCDegradationPreference;
 }
 
 /** What one peer's encoder is told for the video it receives from us. */
@@ -103,7 +108,7 @@ export function screenBitrateFor(budget: ScreenBudget, viewers: number): number 
 
 /**
  * The resolution ladder for a share. Instead of squeezing the bitrate until the
- * encoder drops frames (a slideshow under `maintain-resolution`), shrink the
+ * encoder drops frames (a slideshow when it holds the resolution), shrink the
  * picture in steps; the frame rate stays at the profile's rate at every step.
  */
 export function screenScaleFor(viewers: number): number {
@@ -117,6 +122,21 @@ export function screenScaleFor(viewers: number): number {
     return 2;
   }
   return 3;
+}
+
+/**
+ * Encoder limits for a screen share sent to one of `viewers`. The ladder shrinks
+ * the picture before the encoder has to throw frames away; the profile's
+ * degradation preference decides what gives first when that is not enough
+ * (`balanced` for motion, `maintain-resolution` to keep text sharp).
+ */
+export function screenTuningFor(profile: ScreenProfile, viewers: number): VideoTuning {
+  return {
+    maxBitrate: screenBitrateFor(profile, viewers),
+    maxFramerate: profile.frameRate,
+    scaleResolutionDownBy: screenScaleFor(viewers),
+    degradationPreference: profile.degradationPreference,
+  };
 }
 
 /** The smallest camera bitrate the policy will ask for, whatever the mesh size. */
@@ -323,15 +343,7 @@ export class PeerMesh {
     if (!this.host.isScreenSharing(peerId)) {
       return null;
     }
-    const budget = this.host.getScreenProfile();
-    return {
-      maxBitrate: screenBitrateFor(budget, viewers),
-      maxFramerate: budget.frameRate,
-      scaleResolutionDownBy: screenScaleFor(viewers),
-      // Text stays sharp: the ladder shrinks the picture instead of letting the
-      // encoder throw frames away to hold the resolution.
-      degradationPreference: "maintain-resolution",
-    };
+    return screenTuningFor(this.host.getScreenProfile(), viewers);
   }
 
   async applyAudioTrack(track: MediaStreamTrack | null): Promise<void> {
@@ -802,9 +814,10 @@ export function applyOpusVoiceParams(sdp: string): string {
 }
 
 /**
- * Video tuning. A screen share keeps the frame rate and gives up resolution in
- * steps instead, and prioritizes resolution so text stays legible; a camera
- * prioritizes framerate. The cap keeps video from starving audio on a thin
+ * Video tuning. A screen share gives up resolution first, in steps as viewers
+ * are added; under pressure it holds resolution at 15 fps (so
+ * text stays legible) and is `balanced` at 30 and 60 fps. A camera prioritizes
+ * framerate. The cap keeps video from starving audio on a thin
  * uplink.
  */
 function tuneVideoSender(sender: RTCRtpSender, tuning: VideoTuning | null): void {

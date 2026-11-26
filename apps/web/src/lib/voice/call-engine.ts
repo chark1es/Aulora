@@ -17,6 +17,7 @@ import {
 } from "@aulora/core";
 import { mediaMessage, messageOf } from "./call-errors";
 import type { VoiceEngineOptions, VoiceLocalState, VoiceSnapshot } from "./call-types";
+import { displayDegradation } from "./display";
 import { IceServerSource } from "./ice-servers";
 import { type LinkQuality, VoiceLevelsStore } from "./levels";
 import { LocalCamera } from "./local-camera";
@@ -51,7 +52,8 @@ export type { VoiceEngineOptions, VoiceLocalState, VoiceSnapshot } from "./call-
  *  - A persistent audio *and* video transceiver per peer, so toggling a camera
  *    or starting a screen share swaps tracks with **no renegotiation round-trip**.
  *  - Opus tuned for voice (40 kbps, in-band FEC, DTX); video tuned for either
- *    motion (`maintain-framerate`) or screen clarity (`maintain-resolution`).
+ *    motion (`maintain-framerate` for cameras, `balanced` for the smooth screen
+ *    profile) or screen clarity (`maintain-resolution`).
  *  - A modest jitter-buffer target where the browser supports it, so loss
  *    concealment and clock-drift correction keep working.
  *
@@ -212,8 +214,13 @@ export class VoiceEngine {
         (this.local.video && this.transport !== "sfu" ? this.camera.track : null),
       isScreenSharing: (peerId) => this.screen.trackForPeer(peerId) !== null,
       getScreenProfile: () => {
-        const profile = streamProfile(this.getSettings().streamQuality);
-        return { maxBitrate: profile.maxBitrate, frameRate: profile.frameRate };
+        const settings = this.getSettings();
+        const profile = streamProfile(settings.streamResolution, settings.streamFrameRate);
+        return {
+          maxBitrate: profile.maxBitrate,
+          frameRate: profile.frameRate,
+          degradationPreference: displayDegradation(settings.streamFrameRate),
+        };
       },
       getVideoCodec: () => this.getSettings().screenCodec,
       getCameraProfile: () => {

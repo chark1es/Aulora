@@ -8,7 +8,9 @@ import { createDesktopChannel, invokeDesktopCommand } from "../desktop";
  * replaced, so the shell enumerates the capture sources itself and hands over
  * one JPEG frame per request. This module draws those frames into a canvas and
  * captures the canvas, which keeps encoding and pacing in the webview's own
- * video pipeline instead of adding a native streaming path.
+ * video pipeline instead of adding a native streaming path. A couple of requests
+ * stay in flight so the shell's capture and encode of the next frame overlaps
+ * the IPC, decode and draw of the current one.
  *
  * Frames arrive as a raw Tauri IPC body: a small header followed by JPEG bytes.
  * Nothing is base64-encoded, copied byte-by-byte or parsed as JSON, so a share
@@ -37,9 +39,15 @@ export interface CaptureFrame {
   readonly bytes: Uint8Array<ArrayBuffer>;
   readonly width: number;
   readonly height: number;
+  /**
+   * The shell's wrapping 16-bit count of completed grabs, so frames can be
+   * ordered by when their pixels were taken. 0 (or absent) means unordered, as
+   * older shells left the field zero.
+   */
+  readonly sequence?: number;
 }
 
-/** Magic, version, format, reserved and two sizes: see the shell's `capture.rs`. */
+/** Magic, version, format, capture sequence and two sizes: see the shell's `capture.rs`. */
 export const FRAME_HEADER_BYTES = 16;
 const FRAME_MAGIC = [0x41, 0x55, 0x4c, 0x46]; // "AULF"
 const FRAME_VERSION = 1;
@@ -124,6 +132,7 @@ export function parseCaptureFrame(value: unknown): CaptureFrame {
     bytes: view.subarray(FRAME_HEADER_BYTES),
     width,
     height,
+    sequence: header.getUint16(6, true),
   };
 }
 
@@ -312,8 +321,9 @@ export async function stopAudioCapture(): Promise<void> {
   await invokeDesktopCommand("stop_audio_capture");
 }
 
-/** What the poll loop draws into; injectable so tests need no canvas. */
+/** What the capture loop draws into; injectable so tests need no canvas. */
 export interface FrameSurface {
+  /** Paints the frame and, when the surface can, emits it on the track right away. */
   draw(frame: CaptureFrame): Promise<void>;
   /** A live video track of everything drawn from now on. */
   captureStream(frameRate: number): MediaStreamTrack;
@@ -330,15 +340,57 @@ export interface DisplayStreamDeps {
 
 export interface DisplayStream {
   readonly track: MediaStreamTrack;
-  /** Ends the poll loop and the track. Safe to call more than once. */
+  /** Ends the capture loop and the track. Safe to call more than once. */
   stop(): void;
 }
 
 /**
- * Frames that may fail in a row before the share gives up. A window that was
- * closed keeps failing; anything shorter-lived (a compositor hiccup) recovers.
+ * How long, and how many times in a row, frames must fail before the share
+ * gives up. A window that was closed keeps failing; anything shorter-lived (a
+ * compositor hiccup) recovers. The time floor keeps a 60 fps share, which can
+ * fail fifteen times in a quarter of a second, from ending on a brief hiccup.
  */
 const MAX_CONSECUTIVE_FAILURES = 15;
+const FAILURE_WINDOW_MS = 2_000;
+
+/**
+ * Failures of one kind in a row. Capture and draw failures are counted apart,
+ * so frames that keep arriving cannot hide a surface that never manages to
+ * draw them (a frozen share that never ends).
+ */
+function failureStreak() {
+  let count = 0;
+  let since: number | null = null;
+  return {
+    reset() {
+      count = 0;
+      since = null;
+    },
+    /** Records one failure; true once the streak is long enough to give up. */
+    record(now: number): boolean {
+      count += 1;
+      since ??= now;
+      return count >= MAX_CONSECUTIVE_FAILURES && now - since >= FAILURE_WINDOW_MS;
+    },
+  };
+}
+
+/**
+ * How early a capture may start. Timers can fire a fraction of a millisecond
+ * before their deadline, and re-arming for that remainder costs a clamped 4 ms
+ * nested timer, which alone caps a 60 fps share near 50.
+ */
+const TIMER_SLACK_MS = 1;
+
+/**
+ * Capture requests allowed in flight at once. The shell runs each on its own
+ * blocking thread, so three keep the next frames' capture and encode (about 25
+ * to 40 ms each) overlapped with the current frame's IPC, decode and draw, which
+ * a 60 fps share needs, and spread the work over several cores.
+ */
+export const MAX_CAPTURES_IN_FLIGHT = 3;
+
+type FrameTrack = MediaStreamTrack & { requestFrame?: () => void };
 
 /** Draws JPEG frames into a canvas and captures that canvas as a video track. */
 function canvasSurface(width: number, height: number): FrameSurface | null {
@@ -348,10 +400,15 @@ function canvasSurface(width: number, height: number): FrameSurface | null {
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, width);
   canvas.height = Math.max(1, height);
-  const context = canvas.getContext("2d");
+  // Screen frames are opaque, so an alpha-less canvas skips compositing work.
+  const context = canvas.getContext("2d", { alpha: false });
   if (context === null) {
     return null;
   }
+  let track: FrameTrack | null = null;
+  // Set when the track only emits on `requestFrame`, so every drawn frame goes
+  // out once, when it is drawn, instead of being sampled by a timer.
+  let manual = false;
   return {
     async draw(frame) {
       const bitmap = await createImageBitmap(new Blob([frame.bytes], { type: frame.mime }));
@@ -360,22 +417,62 @@ function canvasSurface(width: number, height: number): FrameSurface | null {
       } finally {
         bitmap.close();
       }
+      if (manual) {
+        track?.requestFrame?.();
+      }
     },
     captureStream(frameRate) {
-      const track = canvas.captureStream(frameRate).getVideoTracks()[0];
-      if (track === undefined) {
+      let candidate: FrameTrack | undefined;
+      try {
+        candidate = canvas.captureStream(0).getVideoTracks()[0] as FrameTrack | undefined;
+      } catch {
+        // An engine that rejects a zero frame rate takes the timed path below.
+        candidate = undefined;
+      }
+      if (candidate !== undefined && typeof candidate.requestFrame === "function") {
+        manual = true;
+        // Emit the frame that is already painted.
+        candidate.requestFrame();
+      } else {
+        candidate?.stop();
+        candidate = canvas.captureStream(frameRate).getVideoTracks()[0] as FrameTrack | undefined;
+      }
+      if (candidate === undefined) {
         throw new Error("The screen surface did not produce a video track.");
       }
-      return track;
+      track = candidate;
+      return candidate;
     },
   };
+}
+
+/** Where a frame sits in the stream: its request order and the shell's grab order. */
+interface FrameStamp {
+  readonly request: number;
+  readonly capture: number;
+}
+
+/**
+ * Whether `a` shows a later picture than `b`. The shell's grab sequence decides
+ * when both frames carry one (a request that stalled before its grab can return
+ * a newer picture than one started after it); otherwise request order does.
+ */
+function newerThan(a: FrameStamp, b: FrameStamp): boolean {
+  if (a.capture !== 0 && b.capture !== 0 && a.capture !== b.capture) {
+    // Wrapping 16-bit comparison: ahead by less than half the range is newer.
+    return ((a.capture - b.capture) & 0xffff) < 0x8000;
+  }
+  return a.request > b.request;
 }
 
 /**
  * Starts a stream of `source`'s frames at the profile's size and frame rate.
  *
- * Frames are pulled one at a time, so a slow shell slows the share instead of
- * queueing work, and the loop stops the moment the track is stopped.
+ * Up to [`MAX_CAPTURES_IN_FLIGHT`] frames are requested at once, never faster
+ * than the frame interval, so a slow shell slows the share instead of queueing
+ * work. Replies can arrive out of order: the newest picture wins (by the shell's
+ * grab sequence), a frame older than one already drawn is dropped, and only one
+ * draw runs at a time. The loop stops the moment the track is stopped.
  */
 export async function openDisplayStream(
   source: DisplaySource,
@@ -398,62 +495,124 @@ export async function openDisplayStream(
   const track = surface.captureStream(frameRate);
 
   let closed = false;
-  let waiting: { timer: number; resume: () => void } | null = null;
-  let failures = 0;
-
-  // `window.setTimeout` keeps the timer handle a plain number whether or not
-  // Node types are in scope.
-  const pause = (ms: number) =>
-    new Promise<void>((resolve) => {
-      const timer = window.setTimeout(() => {
-        waiting = null;
-        resolve();
-      }, ms);
-      waiting = { timer, resume: resolve };
-    });
+  let timer: number | null = null;
+  const captureFailures = failureStreak();
+  const drawFailures = failureStreak();
+  let inFlight = 0;
+  // When the next capture is due. It advances by whole intervals so the pace
+  // does not drift with timer jitter.
+  let nextDue = performance.now() + interval;
+  // Requests are numbered in the order they start; the first frame was 0.
+  let nextRequest = 1;
+  let drawn: FrameStamp = { request: 0, capture: first.sequence ?? 0 };
+  let drawing = false;
+  let pending: { stamp: FrameStamp; frame: CaptureFrame } | null = null;
 
   const stop = () => {
     if (closed) {
       return;
     }
     closed = true;
-    const pendingPause = waiting;
-    waiting = null;
-    if (pendingPause !== null) {
-      window.clearTimeout(pendingPause.timer);
-      pendingPause.resume();
+    pending = null;
+    if (timer !== null) {
+      window.clearTimeout(timer);
+      timer = null;
     }
     track.stop();
   };
 
-  const poll = async () => {
-    while (!closed) {
-      const startedAt = performance.now();
-      try {
-        const frame = await captureFrame(source.id, profile.width, profile.height);
-        if (closed) {
-          return;
-        }
-        await surface.draw(frame);
-        failures = 0;
-      } catch {
-        failures += 1;
-        if (failures >= MAX_CONSECUTIVE_FAILURES) {
-          // The source is gone (a closed window). Ending the track tells the
-          // share to tear down instead of showing a frozen picture.
-          stop();
-          track.dispatchEvent(new Event("ended"));
-          return;
-        }
-      }
-      if (closed) {
-        return;
-      }
-      const elapsed = performance.now() - startedAt;
-      await pause(elapsed < interval ? interval - elapsed : 0);
+  const fail = (streak: ReturnType<typeof failureStreak>) => {
+    if (streak.record(performance.now()) && !closed) {
+      // The source is gone (a closed window) or its frames cannot be drawn.
+      // Ending the track tells the share to tear down instead of showing a
+      // frozen picture.
+      stop();
+      track.dispatchEvent(new Event("ended"));
     }
   };
 
-  void poll();
+  /** Draws the newest waiting frame, and whatever arrives while it draws. */
+  const drain = async () => {
+    if (drawing) {
+      return;
+    }
+    drawing = true;
+    try {
+      while (!closed && pending !== null) {
+        const { stamp, frame } = pending;
+        pending = null;
+        if (!newerThan(stamp, drawn)) {
+          continue;
+        }
+        drawn = stamp;
+        try {
+          await surface.draw(frame);
+          drawFailures.reset();
+        } catch {
+          fail(drawFailures);
+        }
+      }
+    } finally {
+      drawing = false;
+    }
+  };
+
+  const deliver = (request: number, frame: CaptureFrame) => {
+    const stamp: FrameStamp = { request, capture: frame.sequence ?? 0 };
+    if (closed || !newerThan(stamp, drawn)) {
+      return;
+    }
+    if (pending === null || newerThan(stamp, pending.stamp)) {
+      pending = { stamp, frame };
+    }
+    void drain();
+  };
+
+  const launch = () => {
+    const request = nextRequest;
+    nextRequest += 1;
+    inFlight += 1;
+    const now = performance.now();
+    nextDue += interval;
+    if (nextDue - now < interval / 2) {
+      // This launch was late (a stalled event loop or a full cap): start the
+      // next one a whole interval from now rather than catching up in a burst.
+      // Ordinary timer jitter stays on the advancing deadline.
+      nextDue = now + interval;
+    }
+    captureFrame(source.id, profile.width, profile.height).then(
+      (frame) => {
+        inFlight -= 1;
+        // The source is alive, even if this frame turns out to be stale.
+        captureFailures.reset();
+        deliver(request, frame);
+        pump();
+      },
+      () => {
+        inFlight -= 1;
+        fail(captureFailures);
+        pump();
+      },
+    );
+  };
+
+  /** Starts a capture when the cap and the frame interval both allow one. */
+  const pump = () => {
+    if (closed || timer !== null || inFlight >= MAX_CAPTURES_IN_FLIGHT) {
+      return;
+    }
+    const wait = nextDue - performance.now();
+    if (wait > TIMER_SLACK_MS) {
+      timer = window.setTimeout(() => {
+        timer = null;
+        pump();
+      }, Math.ceil(wait));
+      return;
+    }
+    launch();
+    pump();
+  };
+
+  pump();
   return { track, stop };
 }

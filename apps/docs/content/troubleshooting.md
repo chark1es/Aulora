@@ -78,7 +78,7 @@ Both run in WebAssembly on your device. They need WebGL 2 (blur) and a current b
 
 ## Screen shares are choppy or the sharer's connection struggles
 
-A share sent straight to each viewer uses the sharer's upload once per viewer. For regular streaming to many people, ask the administrator to enable the optional streaming server (see [self-hosting](self-hosting.md)), or choose **Settings → Voice & video → Screen sharing quality → Data saver**.
+A share sent straight to each viewer uses the sharer's upload once per viewer. For regular streaming to many people, ask the administrator to enable the optional streaming server (see [self-hosting](self-hosting.md)), or lower the **Resolution** and **Frame rate** under **Settings → Voice & video** (for example 720p at 15 fps).
 
 ## Notifications do not arrive
 

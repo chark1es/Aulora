@@ -30,6 +30,7 @@ import {
   shouldOffer,
   sortParticipants,
   streamProfile,
+  type VoiceDeviceSettings,
 } from "../src/index";
 
 function participant(
@@ -102,7 +103,8 @@ describe("voice settings", () => {
     expect(merged.noiseSuppression).toBe(false);
     expect(merged.enhancedNoiseSuppression).toBe(false);
     expect(merged.backgroundEffect).toBe("none");
-    expect(merged.streamQuality).toBe("smooth");
+    expect(merged.streamResolution).toBe("1080p");
+    expect(merged.streamFrameRate).toBe(60);
     expect(merged.streamAudio).toBe(true);
   });
 
@@ -111,23 +113,74 @@ describe("voice settings", () => {
       backgroundEffect: "sparkle" as never,
       backgroundBlur: "extreme" as never,
       backgroundImage: "../etc/passwd",
-      streamQuality: "ultra" as never,
+      streamResolution: "8k" as never,
+      streamFrameRate: 24 as never,
     });
     expect(merged.backgroundEffect).toBe("none");
     expect(merged.backgroundBlur).toBe("strong");
     expect(merged.backgroundImage).toBe(DEFAULT_VOICE_SETTINGS.backgroundImage);
-    expect(merged.streamQuality).toBe("smooth");
+    expect(merged.streamResolution).toBe("1080p");
+    expect(merged.streamFrameRate).toBe(60);
   });
 
-  it("scales the stream budget with the chosen quality", () => {
-    const smooth = streamProfile("smooth");
-    const balanced = streamProfile("balanced");
-    const saver = streamProfile("saver");
-    expect(smooth.frameRate).toBe(30);
-    expect(balanced.frameRate).toBe(15);
-    expect(saver.height).toBeLessThan(balanced.height);
-    expect(saver.maxBitrate).toBeLessThan(balanced.maxBitrate);
-    expect(balanced.maxBitrate).toBeLessThan(smooth.maxBitrate);
+  it("defaults screen sharing to 1080p at 60 fps", () => {
+    expect(DEFAULT_VOICE_SETTINGS.streamResolution).toBe("1080p");
+    expect(DEFAULT_VOICE_SETTINGS.streamFrameRate).toBe(60);
+  });
+
+  it("keeps valid stored resolution and frame rate", () => {
+    const merged = mergeVoiceSettings({ streamResolution: "2160p", streamFrameRate: 30 });
+    expect(merged.streamResolution).toBe("2160p");
+    expect(merged.streamFrameRate).toBe(30);
+  });
+
+  it("migrates the legacy stream quality preset", () => {
+    const legacy = (streamQuality: unknown) =>
+      mergeVoiceSettings({ streamQuality } as Partial<VoiceDeviceSettings>);
+    expect(legacy("balanced")).toMatchObject({ streamResolution: "1080p", streamFrameRate: 15 });
+    expect(legacy("saver")).toMatchObject({ streamResolution: "720p", streamFrameRate: 15 });
+    expect(legacy("smooth")).toMatchObject({ streamResolution: "1080p", streamFrameRate: 60 });
+    expect(legacy("ultra")).toMatchObject({ streamResolution: "1080p", streamFrameRate: 60 });
+    expect(legacy(undefined)).toMatchObject({ streamResolution: "1080p", streamFrameRate: 60 });
+  });
+
+  it("prefers new stream fields over the legacy preset", () => {
+    const merged = mergeVoiceSettings({
+      streamQuality: "saver",
+      streamResolution: "1440p",
+      streamFrameRate: 60,
+    } as Partial<VoiceDeviceSettings>);
+    expect(merged.streamResolution).toBe("1440p");
+    expect(merged.streamFrameRate).toBe(60);
+  });
+
+  it("migrates a legacy preset only for the field that is missing", () => {
+    const merged = mergeVoiceSettings({
+      streamQuality: "saver",
+      streamFrameRate: 30,
+    } as Partial<VoiceDeviceSettings>);
+    expect(merged.streamResolution).toBe("720p");
+    expect(merged.streamFrameRate).toBe(30);
+  });
+
+  it("builds the stream budget from resolution and frame rate", () => {
+    const table = {
+      "720p": { size: [1280, 720], rates: [1_200_000, 2_000_000, 3_000_000] },
+      "1080p": { size: [1920, 1080], rates: [2_200_000, 3_500_000, 5_000_000] },
+      "1440p": { size: [2560, 1440], rates: [3_500_000, 5_500_000, 8_000_000] },
+      "2160p": { size: [3840, 2160], rates: [6_000_000, 9_000_000, 13_000_000] },
+    } as const;
+    const fps = [15, 30, 60] as const;
+    for (const [resolution, { size, rates }] of Object.entries(table)) {
+      fps.forEach((frameRate, i) => {
+        expect(streamProfile(resolution as keyof typeof table, frameRate)).toEqual({
+          width: size[0],
+          height: size[1],
+          frameRate,
+          maxBitrate: rates[i],
+        });
+      });
+    }
   });
 
   it("maps resolutions to capture constraints", () => {
