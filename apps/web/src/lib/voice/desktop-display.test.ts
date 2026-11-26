@@ -525,6 +525,42 @@ describe("openDisplayStream", () => {
     expect(captureFrame.mock.calls.length).toBeLessThanOrEqual(62);
   });
 
+  it("does not bunch captures after a late timer", async () => {
+    vi.useFakeTimers();
+    const { createSurface } = harness();
+    const starts: number[] = [];
+    const captureFrame = vi.fn(async () => {
+      starts.push(performance.now());
+      return FRAME;
+    });
+    // One stalled event loop: the first paced timer fires ~16 ms late.
+    const realSetTimeout = window.setTimeout.bind(window);
+    let stalled = false;
+    const late = vi.spyOn(window, "setTimeout").mockImplementation(((
+      handler: TimerHandler,
+      ms?: number,
+    ) => {
+      const delay = stalled ? (ms ?? 0) : (ms ?? 0) + 16;
+      stalled = true;
+      return realSetTimeout(handler, delay);
+    }) as typeof window.setTimeout);
+
+    const stream = await openDisplayStream(
+      SOURCE,
+      { ...PROFILE, frameRate: 60 },
+      { captureFrame, createSurface },
+    );
+    await vi.advanceTimersByTimeAsync(500);
+    stream.stop();
+    late.mockRestore();
+
+    // Skip the opening frame, which sizes the surface before pacing starts.
+    const paced = starts.slice(1);
+    expect(paced.length).toBeGreaterThan(20);
+    const gaps = paced.slice(1).map((at, index) => at - (paced[index] ?? at));
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(1000 / 60 / 2);
+  });
+
   it("neither draws nor captures after stop", async () => {
     vi.useFakeTimers();
     const { track, surface, createSurface } = harness();

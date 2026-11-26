@@ -574,8 +574,10 @@ export async function openDisplayStream(
     inFlight += 1;
     const now = performance.now();
     nextDue += interval;
-    if (nextDue <= now) {
-      // A slot was missed (the cap was full): skip it rather than burst.
+    if (nextDue - now < interval / 2) {
+      // This launch was late (a stalled event loop or a full cap): start the
+      // next one a whole interval from now rather than catching up in a burst.
+      // Ordinary timer jitter stays on the advancing deadline.
       nextDue = now + interval;
     }
     captureFrame(source.id, profile.width, profile.height).then(
