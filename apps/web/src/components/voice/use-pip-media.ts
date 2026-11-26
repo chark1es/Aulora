@@ -13,6 +13,12 @@ import {
   parseLoopbackSignal,
 } from "../../lib/voice/pip-loopback";
 
+/**
+ * `HTMLMediaElement.HAVE_CURRENT_DATA`: the element holds the frame for the
+ * current position, not just the stream's metadata.
+ */
+const HAVE_CURRENT_DATA = 2;
+
 /** What the call window's picture surface is currently drawing. */
 export type PipSurfaceKind = "loopback" | "frames" | "none";
 
@@ -53,7 +59,7 @@ export function usePipMedia(): PipSurface {
         !disposed &&
         video !== null &&
         video.videoWidth > 0 &&
-        video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+        video.readyState >= HAVE_CURRENT_DATA
       ) {
         setKind((current) => (current === "loopback" ? current : "loopback"));
       }
