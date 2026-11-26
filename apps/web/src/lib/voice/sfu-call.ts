@@ -223,8 +223,9 @@ export class SfuCall {
       visible: true,
       pictureInPicture: true,
       visibilityChangedAt: Date.now(),
-      observe: () => {},
-      stopObserving: () => {},
+      // Nothing to observe: the hold is visible until it is released.
+      observe: () => undefined,
+      stopObserving: () => undefined,
     };
     held.observeElementInfo(info);
     let released = false;

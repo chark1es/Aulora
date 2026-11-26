@@ -70,7 +70,9 @@ const SFU_RETRY_MS = 30_000;
 const ICE_PRELOAD_MS = 2_000;
 
 /** The release for a hold that held nothing. */
-const NO_RELEASE = (): void => {};
+const NO_RELEASE = (): void => {
+  // The peer mesh never pauses a camera, so nothing was held.
+};
 
 /**
  * The camera bitrate a single peer's copy gets at each capture size. More peers

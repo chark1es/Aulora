@@ -149,7 +149,9 @@ const EMPTY_SNAPSHOT: VoiceSnapshot = {
   remoteScreens: new Map(),
   remoteSpeaking: new Set(),
   attachRemoteVideo: () => false,
-  holdRemoteVideo: () => () => {},
+  holdRemoteVideo: () => () => {
+    // Outside a call nothing is held, so there is nothing to release.
+  },
   localSpeaking: false,
   pending: false,
   error: null,
