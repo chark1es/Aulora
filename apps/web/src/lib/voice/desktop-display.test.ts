@@ -37,7 +37,12 @@ function frameBuffer(
   jpeg: readonly number[] = JPEG,
   width = 1280,
   height = 720,
-  overrides: { readonly magic?: number; readonly version?: number; readonly format?: number } = {},
+  overrides: {
+    readonly magic?: number;
+    readonly version?: number;
+    readonly format?: number;
+    readonly sequence?: number;
+  } = {},
 ): ArrayBuffer {
   const buffer = new ArrayBuffer(FRAME_HEADER_BYTES + jpeg.length);
   const bytes = new Uint8Array(buffer);
@@ -48,6 +53,7 @@ function frameBuffer(
   bytes[4] = overrides.version ?? 1;
   bytes[5] = overrides.format ?? 1;
   const view = new DataView(buffer);
+  view.setUint16(6, overrides.sequence ?? 0, true);
   view.setUint32(8, width, true);
   view.setUint32(12, height, true);
   bytes.set(jpeg, FRAME_HEADER_BYTES);
@@ -195,6 +201,13 @@ describe("screen capture permission", () => {
 });
 
 describe("parseCaptureFrame", () => {
+  it("reads the shell's capture sequence, and zero from older shells", () => {
+    expect(parseCaptureFrame(frameBuffer(JPEG, 1280, 720, { sequence: 0xbeef })).sequence).toBe(
+      0xbeef,
+    );
+    expect(parseCaptureFrame(frameBuffer(JPEG, 1280, 720)).sequence).toBe(0);
+  });
+
   it("reads the header and exposes the JPEG as a view", () => {
     const frame = parseCaptureFrame(frameBuffer(JPEG, 1280, 720));
     expect(frame.mime).toBe("image/jpeg");
@@ -409,6 +422,60 @@ describe("openDisplayStream", () => {
 
     expect(surface.draw.mock.calls.map((call) => call[0])).toEqual([FRAME, f1, f3]);
     expect(peakDrawing).toBe(1);
+    stream.stop();
+  });
+
+  it("orders frames by when the shell grabbed them, not when they were asked for", async () => {
+    vi.useFakeTimers();
+    const { surface, createSurface } = harness();
+    const captures = deferredCaptures();
+    const grabbed = (sequence: number): CaptureFrame => ({ ...FRAME, sequence });
+
+    const stream = await openDisplayStream(SOURCE, PROFILE, {
+      captureFrame: captures.captureFrame,
+      createSurface,
+    });
+    await vi.advanceTimersByTimeAsync(400);
+    expect(captures.waiting.length).toBe(MAX_CAPTURES_IN_FLIGHT);
+
+    // The first request stalled before its grab, so it holds the newest picture
+    // and replies first; the later request's older grab must not follow it.
+    const newest = grabbed(0xffff);
+    const older = grabbed(0xfffe);
+    captures.waiting[0]?.resolve(newest);
+    await vi.advanceTimersByTimeAsync(0);
+    captures.waiting[1]?.resolve(older);
+    await vi.advanceTimersByTimeAsync(0);
+    // The sequence wraps: 1 comes after 0xffff.
+    const wrapped = grabbed(1);
+    captures.waiting[2]?.resolve(wrapped);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(surface.draw.mock.calls.map((call) => call[0])).toEqual([FRAME, newest, wrapped]);
+    stream.stop();
+  });
+
+  it("rides out a brief burst of failures at 60 fps", async () => {
+    vi.useFakeTimers();
+    const { track, surface, createSurface } = harness();
+    let calls = 0;
+    const captureFrame = vi.fn(() => {
+      calls += 1;
+      // The first frame, then twenty quick failures (a third of a second at 60 fps).
+      return calls === 1 || calls > 21 ? Promise.resolve(FRAME) : Promise.reject(new Error("busy"));
+    });
+
+    const stream = await openDisplayStream(
+      SOURCE,
+      { ...PROFILE, frameRate: 60 },
+      { captureFrame, createSurface },
+    );
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(captureFrame.mock.calls.length).toBeGreaterThan(21);
+    expect(track.dispatchEvent).not.toHaveBeenCalled();
+    expect(track.stop).not.toHaveBeenCalled();
+    expect(surface.draw.mock.calls.length).toBeGreaterThan(1);
     stream.stop();
   });
 

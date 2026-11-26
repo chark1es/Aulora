@@ -23,6 +23,7 @@ use image::RgbaImage;
 use jpeg_encoder::{ColorType, Encoder};
 use serde::Serialize;
 use std::cell::RefCell;
+use std::sync::atomic::{AtomicU16, Ordering};
 use xcap::{Monitor, Window};
 
 /// Tile box for the picker, and the quality a tile is encoded at.
@@ -33,20 +34,27 @@ const THUMBNAIL_QUALITY: u8 = 60;
 /// Frame quality: sharp enough for text, small enough to cross the IPC bridge.
 const FRAME_QUALITY: u8 = 72;
 
-/// Magic, version, format byte and two sizes: the raw frame prefix. The
-/// web client validates these before handing the rest to the image decoder.
+/// Magic, version, format byte, capture sequence and two sizes: the raw frame
+/// prefix. The web client validates these before handing the rest to the image
+/// decoder.
 pub const FRAME_MAGIC: [u8; 4] = *b"AULF";
 pub const FRAME_VERSION: u8 = 1;
 pub const FRAME_FORMAT_JPEG: u8 = 1;
 pub const FRAME_HEADER_BYTES: usize = 16;
 
-/// The header a frame body starts with. Sizes are little endian so the webview
-/// reads them with `DataView.getUint32(offset, true)`.
-fn frame_header(width: u32, height: u32) -> [u8; FRAME_HEADER_BYTES] {
+/// The header a frame body starts with. Numbers are little endian so the
+/// webview reads them with `DataView.getUint16/getUint32(offset, true)`.
+/// Bytes 6..8 carry a wrapping capture sequence: the client keeps several
+/// requests in flight, and a request that stalls before its grab can return a
+/// newer picture than one that started after it, so frames are ordered by when
+/// the pixels were taken rather than by when they were asked for. Older shells
+/// left these bytes zero, which the client treats as unordered.
+fn frame_header(width: u32, height: u32, sequence: u16) -> [u8; FRAME_HEADER_BYTES] {
     let mut header = [0u8; FRAME_HEADER_BYTES];
     header[..4].copy_from_slice(&FRAME_MAGIC);
     header[4] = FRAME_VERSION;
     header[5] = FRAME_FORMAT_JPEG;
+    header[6..8].copy_from_slice(&sequence.to_le_bytes());
     header[8..12].copy_from_slice(&width.to_le_bytes());
     header[12..16].copy_from_slice(&height.to_le_bytes());
     header
@@ -165,7 +173,12 @@ fn downscale(image: RgbaImage, width: u32, height: u32) -> Result<Vec<u8>, Strin
             resizer.borrow_mut().resize(
                 &source,
                 &mut target,
-                &ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::Box)),
+                // Screens are opaque, and on Windows 8+ GDI leaves the fourth
+                // byte unset (often zero): premultiplying by it would turn the
+                // whole picture black.
+                &ResizeOptions::new()
+                    .resize_alg(ResizeAlg::Convolution(FilterType::Box))
+                    .use_alpha(false),
             )
         })
         .map_err(|error| failed(&error))?;
@@ -222,10 +235,11 @@ pub fn frame_bytes(
     max_width: u32,
     max_height: u32,
     quality: u8,
+    sequence: u16,
 ) -> Result<Vec<u8>, String> {
     let (jpeg, width, height) = encode_jpeg(image, max_width, max_height, quality)?;
     let mut body = Vec::with_capacity(FRAME_HEADER_BYTES + jpeg.len());
-    body.extend_from_slice(&frame_header(width, height));
+    body.extend_from_slice(&frame_header(width, height, sequence));
     body.extend_from_slice(&jpeg);
     Ok(body)
 }
@@ -313,6 +327,9 @@ pub fn list_sources() -> Result<Vec<CaptureSource>, String> {
     Ok(sources)
 }
 
+/// Wrapping counter of completed grabs, written into each frame header.
+static CAPTURE_SEQUENCE: AtomicU16 = AtomicU16::new(1);
+
 /// Captures one frame of `source_id` as raw header-plus-JPEG bytes, scaled to
 /// fit `max_width`×`max_height` (either may be zero for no limit). Sources are
 /// looked up again on every frame so a closed window reports a clear error
@@ -337,8 +354,10 @@ pub fn capture_frame_bytes(
             .capture_image(),
     }
     .map_err(|error| format!("Could not capture that source: {error}"))?;
+    // Stamped right after the grab, so it orders frames by capture time.
+    let sequence = CAPTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
 
-    frame_bytes(image, max_width, max_height, FRAME_QUALITY)
+    frame_bytes(image, max_width, max_height, FRAME_QUALITY, sequence)
 }
 
 /// Whether the OS lets Aulora read the screen, and how to grant it.
@@ -554,12 +573,27 @@ mod tests {
     }
 
     #[test]
+    fn downscaling_ignores_an_unset_alpha_byte() {
+        // Windows GDI leaves the fourth byte zero; the picture must survive.
+        let source = RgbaImage::from_pixel(400, 200, image::Rgba([200, 120, 40, 0]));
+        let pixels = downscale(source, 200, 100).expect("downscale");
+        assert_eq!(pixels.len(), 200 * 100 * 4);
+        let expected = [200, 120, 40];
+        for (index, value) in pixels.iter().enumerate() {
+            if let Some(channel) = expected.get(index % 4) {
+                assert_eq!(value, channel, "colour byte {index}");
+            }
+        }
+    }
+
+    #[test]
     fn raw_frames_carry_a_parsable_header_and_jpeg_body() {
         let source = RgbaImage::from_pixel(400, 200, image::Rgba([10, 20, 30, 255]));
-        let frame = frame_bytes(source, 200, 100, FRAME_QUALITY).expect("frame");
+        let frame = frame_bytes(source, 200, 100, FRAME_QUALITY, 0xBEEF).expect("frame");
         assert_eq!(&frame[..4], &FRAME_MAGIC);
         assert_eq!(frame[4], FRAME_VERSION);
         assert_eq!(frame[5], FRAME_FORMAT_JPEG);
+        assert_eq!(u16::from_le_bytes([frame[6], frame[7]]), 0xBEEF);
         let width = u32::from_le_bytes(frame[8..12].try_into().expect("width"));
         let height = u32::from_le_bytes(frame[12..16].try_into().expect("height"));
         assert_eq!((width, height), (200, 100));

@@ -39,9 +39,15 @@ export interface CaptureFrame {
   readonly bytes: Uint8Array<ArrayBuffer>;
   readonly width: number;
   readonly height: number;
+  /**
+   * The shell's wrapping 16-bit count of completed grabs, so frames can be
+   * ordered by when their pixels were taken. 0 (or absent) means unordered, as
+   * older shells left the field zero.
+   */
+  readonly sequence?: number;
 }
 
-/** Magic, version, format, reserved and two sizes: see the shell's `capture.rs`. */
+/** Magic, version, format, capture sequence and two sizes: see the shell's `capture.rs`. */
 export const FRAME_HEADER_BYTES = 16;
 const FRAME_MAGIC = [0x41, 0x55, 0x4c, 0x46]; // "AULF"
 const FRAME_VERSION = 1;
@@ -126,6 +132,7 @@ export function parseCaptureFrame(value: unknown): CaptureFrame {
     bytes: view.subarray(FRAME_HEADER_BYTES),
     width,
     height,
+    sequence: header.getUint16(6, true),
   };
 }
 
@@ -338,10 +345,13 @@ export interface DisplayStream {
 }
 
 /**
- * Frames that may fail in a row before the share gives up. A window that was
- * closed keeps failing; anything shorter-lived (a compositor hiccup) recovers.
+ * How long, and how many times in a row, frames must fail before the share
+ * gives up. A window that was closed keeps failing; anything shorter-lived (a
+ * compositor hiccup) recovers. The time floor keeps a 60 fps share, which can
+ * fail fifteen times in a quarter of a second, from ending on a brief hiccup.
  */
 const MAX_CONSECUTIVE_FAILURES = 15;
+export const FAILURE_WINDOW_MS = 2_000;
 
 /**
  * Capture requests allowed in flight at once. The shell runs each on its own
@@ -401,14 +411,33 @@ function canvasSurface(width: number, height: number): FrameSurface | null {
   };
 }
 
+/** Where a frame sits in the stream: its request order and the shell's grab order. */
+interface FrameStamp {
+  readonly request: number;
+  readonly capture: number;
+}
+
+/**
+ * Whether `a` shows a later picture than `b`. The shell's grab sequence decides
+ * when both frames carry one (a request that stalled before its grab can return
+ * a newer picture than one started after it); otherwise request order does.
+ */
+function newerThan(a: FrameStamp, b: FrameStamp): boolean {
+  if (a.capture !== 0 && b.capture !== 0 && a.capture !== b.capture) {
+    // Wrapping 16-bit comparison: ahead by less than half the range is newer.
+    return ((a.capture - b.capture) & 0xffff) < 0x8000;
+  }
+  return a.request > b.request;
+}
+
 /**
  * Starts a stream of `source`'s frames at the profile's size and frame rate.
  *
  * Up to [`MAX_CAPTURES_IN_FLIGHT`] frames are requested at once, never faster
  * than the frame interval, so a slow shell slows the share instead of queueing
- * work. Replies can arrive out of order: the newest frame wins, a frame older
- * than one already drawn is dropped, and only one draw runs at a time. The loop
- * stops the moment the track is stopped.
+ * work. Replies can arrive out of order: the newest picture wins (by the shell's
+ * grab sequence), a frame older than one already drawn is dropped, and only one
+ * draw runs at a time. The loop stops the moment the track is stopped.
  */
 export async function openDisplayStream(
   source: DisplaySource,
@@ -433,13 +462,14 @@ export async function openDisplayStream(
   let closed = false;
   let timer: number | null = null;
   let failures = 0;
+  let failingSince: number | null = null;
   let inFlight = 0;
   let lastStart = performance.now();
   // Requests are numbered in the order they start; the first frame was 0.
-  let nextSeq = 1;
-  let drawnSeq = 0;
+  let nextRequest = 1;
+  let drawn: FrameStamp = { request: 0, capture: first.sequence ?? 0 };
   let drawing = false;
-  let pending: { seq: number; frame: CaptureFrame } | null = null;
+  let pending: { stamp: FrameStamp; frame: CaptureFrame } | null = null;
 
   const stop = () => {
     if (closed) {
@@ -454,9 +484,20 @@ export async function openDisplayStream(
     track.stop();
   };
 
+  const recovered = () => {
+    failures = 0;
+    failingSince = null;
+  };
+
   const fail = () => {
     failures += 1;
-    if (!closed && failures >= MAX_CONSECUTIVE_FAILURES) {
+    const now = performance.now();
+    failingSince ??= now;
+    if (
+      !closed &&
+      failures >= MAX_CONSECUTIVE_FAILURES &&
+      now - failingSince >= FAILURE_WINDOW_MS
+    ) {
       // The source is gone (a closed window). Ending the track tells the
       // share to tear down instead of showing a frozen picture.
       stop();
@@ -472,15 +513,15 @@ export async function openDisplayStream(
     drawing = true;
     try {
       while (!closed && pending !== null) {
-        const { seq, frame } = pending;
+        const { stamp, frame } = pending;
         pending = null;
-        if (seq < drawnSeq) {
+        if (!newerThan(stamp, drawn)) {
           continue;
         }
-        drawnSeq = seq;
+        drawn = stamp;
         try {
           await surface.draw(frame);
-          failures = 0;
+          recovered();
         } catch {
           fail();
         }
@@ -490,25 +531,28 @@ export async function openDisplayStream(
     }
   };
 
-  const deliver = (seq: number, frame: CaptureFrame) => {
-    if (closed || seq < drawnSeq) {
+  const deliver = (request: number, frame: CaptureFrame) => {
+    const stamp: FrameStamp = { request, capture: frame.sequence ?? 0 };
+    if (closed || !newerThan(stamp, drawn)) {
       return;
     }
-    if (pending === null || seq > pending.seq) {
-      pending = { seq, frame };
+    if (pending === null || newerThan(stamp, pending.stamp)) {
+      pending = { stamp, frame };
     }
     void drain();
   };
 
   const launch = () => {
-    const seq = nextSeq;
-    nextSeq += 1;
+    const request = nextRequest;
+    nextRequest += 1;
     inFlight += 1;
     lastStart = performance.now();
     captureFrame(source.id, profile.width, profile.height).then(
       (frame) => {
         inFlight -= 1;
-        deliver(seq, frame);
+        // The source is alive, even if this frame turns out to be stale.
+        recovered();
+        deliver(request, frame);
         pump();
       },
       () => {

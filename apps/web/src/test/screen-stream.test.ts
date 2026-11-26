@@ -2,7 +2,12 @@ import { DEFAULT_VOICE_SETTINGS, type SfuAccess } from "@aulora/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DisplayCapture } from "../lib/voice/display";
 import { ScreenStreamer, type ScreenStreamHost } from "../lib/voice/screen-stream";
-import type { SfuConnection, SfuConnector, SfuHandlers } from "../lib/voice/sfu-room";
+import {
+  lowLayerSize,
+  type SfuConnection,
+  type SfuConnector,
+  type SfuHandlers,
+} from "../lib/voice/sfu-room";
 
 const ACCESS: SfuAccess = { url: "wss://stream.example.com", token: "t", canPublish: true };
 
@@ -251,5 +256,23 @@ describe("ScreenStreamer.watch", () => {
     await opening;
     expect(h.connection.disconnect).toHaveBeenCalled();
     expect(h.streamer.relayed.size).toBe(0);
+  });
+});
+
+describe("lowLayerSize", () => {
+  const fourK = { width: 3840, height: 2160, frameRate: 60, maxBitrate: 13_000_000 };
+
+  it("halves the source, not the ceiling, when the source is smaller", () => {
+    // A 1080p screen under a 4K setting: the low layer must be 540p, not 1080p.
+    expect(lowLayerSize(fourK, { width: 1920, height: 1080 })).toEqual({ width: 960, height: 540 });
+  });
+
+  it("fits a larger source into the ceiling before halving", () => {
+    const hd = { ...fourK, width: 1920, height: 1080 };
+    expect(lowLayerSize(hd, { width: 3840, height: 2400 })).toEqual({ width: 864, height: 540 });
+  });
+
+  it("falls back to the ceiling when the track reports no size", () => {
+    expect(lowLayerSize(fourK, {})).toEqual({ width: 1920, height: 1080 });
   });
 });

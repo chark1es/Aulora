@@ -237,28 +237,45 @@ export interface StreamProfile {
   readonly maxBitrate: number;
 }
 
-const STREAM_SIZES: Record<StreamResolution, { width: number; height: number }> = {
-  "720p": { width: 1280, height: 720 },
-  "1080p": { width: 1920, height: 1080 },
-  "1440p": { width: 2560, height: 1440 },
-  "2160p": { width: 3840, height: 2160 },
+/** A resolution's size ceiling and peak bits per second per viewer at each frame rate. */
+interface StreamSize {
+  readonly width: number;
+  readonly height: number;
+  readonly bitrates: { readonly at15: number; readonly at30: number; readonly at60: number };
+}
+
+const DEFAULT_STREAM_SIZE: StreamSize = {
+  width: 1920,
+  height: 1080,
+  bitrates: { at15: 2_200_000, at30: 3_500_000, at60: 5_000_000 },
 };
 
-/** Peak bits per second per viewer, by resolution then frame rate. */
-const STREAM_BITRATES: Record<StreamResolution, Record<StreamFrameRate, number>> = {
-  "720p": { 15: 1_200_000, 30: 2_000_000, 60: 3_000_000 },
-  "1080p": { 15: 2_200_000, 30: 3_500_000, 60: 5_000_000 },
-  "1440p": { 15: 3_500_000, 30: 5_500_000, 60: 8_000_000 },
-  "2160p": { 15: 6_000_000, 30: 9_000_000, 60: 13_000_000 },
-};
+const STREAM_SIZES = new Map<StreamResolution, StreamSize>([
+  [
+    "720p",
+    { width: 1280, height: 720, bitrates: { at15: 1_200_000, at30: 2_000_000, at60: 3_000_000 } },
+  ],
+  ["1080p", DEFAULT_STREAM_SIZE],
+  [
+    "1440p",
+    { width: 2560, height: 1440, bitrates: { at15: 3_500_000, at30: 5_500_000, at60: 8_000_000 } },
+  ],
+  [
+    "2160p",
+    { width: 3840, height: 2160, bitrates: { at15: 6_000_000, at30: 9_000_000, at60: 13_000_000 } },
+  ],
+]);
 
 export function streamProfile(
   resolution: StreamResolution,
   frameRate: StreamFrameRate,
 ): StreamProfile {
+  const size = STREAM_SIZES.get(resolution) ?? DEFAULT_STREAM_SIZE;
+  const { bitrates } = size;
   return {
-    ...STREAM_SIZES[resolution],
+    width: size.width,
+    height: size.height,
     frameRate,
-    maxBitrate: STREAM_BITRATES[resolution][frameRate],
+    maxBitrate: frameRate === 15 ? bitrates.at15 : frameRate === 30 ? bitrates.at30 : bitrates.at60,
   };
 }
