@@ -1,14 +1,18 @@
-import { act, render } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { type PipSurface, usePipMedia } from "../components/voice/use-pip-media";
 
 const mocks = vi.hoisted(() => ({
   onTrack: null as ((track: MediaStreamTrack) => void) | null,
+  order: [] as string[],
 }));
 
 vi.mock("../lib/desktop", () => ({
   emitDesktopEventTo: vi.fn(async () => undefined),
-  listenDesktopEvent: vi.fn(async () => () => {}),
+  listenDesktopEvent: vi.fn(async () => {
+    mocks.order.push("listen");
+    return () => undefined;
+  }),
 }));
 vi.mock("../lib/voice/pip-frames", () => ({
   registerPipFrames: () => () => {},
@@ -18,6 +22,7 @@ vi.mock("../lib/voice/pip-loopback", () => ({
   loopbackSupported: () => true,
   parseLoopbackSignal: () => null,
   createPipReceiver: (options: { onTrack: (track: MediaStreamTrack) => void }) => {
+    mocks.order.push("receiver");
     mocks.onTrack = options.onTrack;
     return { transport: { close: vi.fn() }, receive: vi.fn() };
   },
@@ -39,8 +44,24 @@ function decode(video: HTMLVideoElement, width: number) {
   });
 }
 
+/** Renders the hook and waits for the receiver, which starts once listening. */
+async function mount() {
+  const view = render(<Probe />);
+  await waitFor(() => {
+    expect(mocks.onTrack).not.toBeNull();
+  });
+  return view.container.querySelector("video") as HTMLVideoElement;
+}
+
+function receive(track: MediaStreamTrack) {
+  act(() => {
+    mocks.onTrack?.(track);
+  });
+}
+
 beforeEach(() => {
   mocks.onTrack = null;
+  mocks.order = [];
   surface = null;
   vi.stubGlobal(
     "MediaStream",
@@ -52,12 +73,24 @@ beforeEach(() => {
 });
 
 describe("usePipMedia", () => {
-  it("keeps the avatars until the received track decodes a frame", () => {
-    const { container } = render(<Probe />);
-    const video = container.querySelector("video") as HTMLVideoElement;
-    act(() => {
-      mocks.onTrack?.({ kind: "video" } as MediaStreamTrack);
-    });
+  it("listens for the offer before announcing itself", async () => {
+    await mount();
+    expect(mocks.order).toEqual(["listen", "receiver"]);
+  });
+
+  it("waits for a replacement stream's own first frame", async () => {
+    const video = await mount();
+    receive({ kind: "video" } as MediaStreamTrack);
+    decode(video, 640);
+    expect(surface?.kind).toBe("loopback");
+    // The loopback restarted with a stream that has not decoded anything yet.
+    receive({ kind: "video" } as MediaStreamTrack);
+    expect(surface?.kind).toBe("none");
+  });
+
+  it("keeps the avatars until the received track decodes a frame", async () => {
+    const video = await mount();
+    receive({ kind: "video" } as MediaStreamTrack);
     // A track that never delivers a frame (a paused camera) must not draw black.
     expect(surface?.kind).toBe("none");
     decode(video, 0);

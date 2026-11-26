@@ -67,25 +67,8 @@ export function usePipMedia(): PipSurface {
     });
 
     if (loopbackSupported()) {
-      receiver = createPipReceiver({
-        send: (signal) => {
-          void emitDesktopEventTo(MAIN_WINDOW_LABEL, PIP_SIGNAL_EVENT, signal);
-        },
-        onTrack: (track) => {
-          if (video === null) {
-            return;
-          }
-          video.srcObject = new MediaStream([track]);
-          void video.play().catch(() => {
-            // Muted autoplay is allowed; a refusal leaves the frame fallback.
-          });
-        },
-        onState: (state) => {
-          if (state === "idle" || state === "failed" || state === "closed") {
-            setKind((current) => (current === "loopback" ? "none" : current));
-          }
-        },
-      });
+      // Listen before announcing: the receiver says `ready` as it starts, and
+      // the main window's offer can come straight back.
       void listenDesktopEvent(PIP_SIGNAL_EVENT, (payload) => {
         const signal = parseLoopbackSignal(payload);
         if (signal !== null) {
@@ -94,9 +77,31 @@ export function usePipMedia(): PipSurface {
       }).then((off) => {
         if (disposed) {
           off();
-        } else {
-          unlisten = off;
+          return;
         }
+        unlisten = off;
+        receiver = createPipReceiver({
+          send: (signal) => {
+            void emitDesktopEventTo(MAIN_WINDOW_LABEL, PIP_SIGNAL_EVENT, signal);
+          },
+          onTrack: (track) => {
+            if (video === null) {
+              return;
+            }
+            // A new stream has to decode its own first frame before it is
+            // shown; the last one's may be all this element has.
+            setKind((current) => (current === "loopback" ? "none" : current));
+            video.srcObject = new MediaStream([track]);
+            void video.play().catch(() => {
+              // Muted autoplay is allowed; a refusal leaves the frame fallback.
+            });
+          },
+          onState: (state) => {
+            if (state === "idle" || state === "failed" || state === "closed") {
+              setKind((current) => (current === "loopback" ? "none" : current));
+            }
+          },
+        });
       });
     }
 
