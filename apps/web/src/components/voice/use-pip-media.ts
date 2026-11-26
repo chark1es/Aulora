@@ -48,7 +48,13 @@ export function usePipMedia(): PipSurface {
     let receiver: PipReceiverHandle | null = null;
     const video = videoRef.current;
     const onDecodedFrame = () => {
-      if (!disposed && video !== null && video.videoWidth > 0) {
+      // A size alone is only metadata; the current frame has to be there too.
+      if (
+        !disposed &&
+        video !== null &&
+        video.videoWidth > 0 &&
+        video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+      ) {
         setKind((current) => (current === "loopback" ? current : "loopback"));
       }
     };

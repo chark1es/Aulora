@@ -39,6 +39,10 @@ function Probe() {
 /** Makes the element report a decoded frame of `width` pixels. */
 function decode(video: HTMLVideoElement, width: number) {
   Object.defineProperty(video, "videoWidth", { configurable: true, value: width });
+  Object.defineProperty(video, "readyState", {
+    configurable: true,
+    value: HTMLMediaElement.HAVE_CURRENT_DATA,
+  });
   act(() => {
     video.dispatchEvent(new Event("loadeddata"));
   });
@@ -85,6 +89,20 @@ describe("usePipMedia", () => {
     expect(surface?.kind).toBe("loopback");
     // The loopback restarted with a stream that has not decoded anything yet.
     receive({ kind: "video" } as MediaStreamTrack);
+    expect(surface?.kind).toBe("none");
+  });
+
+  it("does not take a size from metadata for a frame", async () => {
+    const video = await mount();
+    receive({ kind: "video" } as MediaStreamTrack);
+    Object.defineProperty(video, "videoWidth", { configurable: true, value: 640 });
+    Object.defineProperty(video, "readyState", {
+      configurable: true,
+      value: HTMLMediaElement.HAVE_METADATA,
+    });
+    act(() => {
+      video.dispatchEvent(new Event("resize"));
+    });
     expect(surface?.kind).toBe("none");
   });
 
