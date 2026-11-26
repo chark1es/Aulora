@@ -159,7 +159,9 @@ export function CallPipWindow() {
         title="Double-click to return to the app"
       >
         {/* The live picture. Always mounted so the track has a sink the moment
-            it arrives; it is only shown when it is the active surface. */}
+            it arrives. Until it is the active surface it is transparent rather
+            than `display: none`: it is shown only after it decodes a frame,
+            and some engines (WebKit) decode only video that is laid out. */}
         <video
           ref={media.videoRef}
           autoPlay
@@ -167,7 +169,7 @@ export function CallPipWindow() {
           playsInline
           className={cn(
             "absolute inset-0 h-full w-full bg-black object-contain",
-            surface !== "loopback" && "hidden",
+            surface !== "loopback" && "pointer-events-none opacity-0",
           )}
         />
         <canvas

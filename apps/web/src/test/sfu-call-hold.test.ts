@@ -80,6 +80,9 @@ describe("SfuCall.holdVideo with LiveKit's own track", () => {
     // No receiver: nothing here reads stats.
     const receiver = undefined as unknown as RTCRtpReceiver;
     const remote = new RemoteVideoTrack(media, "TR_camera", receiver, {});
+    // LiveKit sets this field itself; a rename in an upgrade would otherwise
+    // quietly turn this into a foreground test.
+    expect(remote).toHaveProperty("isInBackground", false);
     // In the background: LiveKit pauses every adaptive camera here.
     (remote as unknown as { isInBackground: boolean }).isInBackground = true;
     const visibility: boolean[] = [];

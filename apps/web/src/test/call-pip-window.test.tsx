@@ -185,7 +185,9 @@ describe("the call window", () => {
     // camera turned off) must not cover the tiles with a black video.
     mocks.surfaceKind = "loopback";
     await mount(state);
-    expect(document.querySelector("video")?.classList.contains("hidden")).toBe(true);
+    // Transparent, not `display: none`: it still has to decode its first frame.
+    expect(document.querySelector("video")?.classList.contains("opacity-0")).toBe(true);
+    expect(document.querySelector("video")?.classList.contains("hidden")).toBe(false);
     expect(document.querySelector("canvas")?.classList.contains("hidden")).toBe(true);
     expect(screen.getByText("Grace")).toBeInTheDocument();
   });
@@ -193,7 +195,7 @@ describe("the call window", () => {
   it("shows the live picture when there is one", async () => {
     mocks.surfaceKind = "loopback";
     await mount({ ...state, mediaKind: "camera", speakerName: "Grace" });
-    expect(document.querySelector("video")?.classList.contains("hidden")).toBe(false);
+    expect(document.querySelector("video")?.classList.contains("opacity-0")).toBe(false);
     expect(screen.queryByText("Ada (you)")).toBeNull();
   });
 
