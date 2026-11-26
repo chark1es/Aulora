@@ -306,7 +306,7 @@ describe("mesh video codec preferences", () => {
 });
 
 describe("displayContentHint", () => {
-  it("keeps detail for desktops and asks for motion only in the smooth profile", () => {
+  it("keeps detail at 15 fps and asks for motion at 30 and 60 fps", () => {
     expect(displayContentHint(15)).toBe("detail");
     expect(displayContentHint(30)).toBe("motion");
     expect(displayContentHint(60)).toBe("motion");
@@ -314,7 +314,7 @@ describe("displayContentHint", () => {
 });
 
 describe("displayDegradation", () => {
-  it("lets the smooth profile trade resolution first and keeps text sharp elsewhere", () => {
+  it("trades resolution first at 30 and 60 fps and keeps text sharp at 15 fps", () => {
     expect(displayDegradation(60)).toBe("balanced");
     expect(displayDegradation(30)).toBe("balanced");
     expect(displayDegradation(15)).toBe("maintain-resolution");

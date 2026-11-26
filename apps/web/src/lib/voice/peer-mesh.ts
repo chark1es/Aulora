@@ -55,7 +55,7 @@ export interface PeerMeshHost {
   getVideoTrack(peerId: string): MediaStreamTrack | null;
   /** Whether the track returned for this peer is a screen share (tunes the encoder). */
   isScreenSharing(peerId: string): boolean;
-  /** The chosen stream quality: the most a single viewer's copy may use. */
+  /** The chosen screen-share budget: the most a single viewer's copy may use. */
   getScreenProfile(): ScreenProfile;
   /** The camera the user asked for: the budget a single peer would get. */
   getCameraProfile(): ScreenBudget;
@@ -814,8 +814,8 @@ export function applyOpusVoiceParams(sdp: string): string {
 }
 
 /**
- * Video tuning. A screen share keeps the frame rate and gives up resolution in
- * steps as viewers are added; under pressure it holds resolution at 15 fps (so
+ * Video tuning. A screen share gives up resolution first, in steps as viewers
+ * are added; under pressure it holds resolution at 15 fps (so
  * text stays legible) and is `balanced` at 30 and 60 fps. A camera prioritizes
  * framerate. The cap keeps video from starving audio on a thin
  * uplink.

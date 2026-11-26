@@ -36,7 +36,9 @@ xcap = "0.4.1"
 image = { version = "0.25", default-features = false }
 # Frame encoding: JPEG that takes RGBA directly (about 4x faster than `image`'s
 # encoder on x86 with AVX2, where its SIMD path runs; scalar but still faster on
-# ARM) and a SIMD box-filter downscale (about 4x faster than `imageops::thumbnail`). Both need Rust 1.87, below what `image` 0.25 already asks.
+# ARM) and a SIMD box-filter downscale (about 4x faster than
+# `imageops::thumbnail`). Both need Rust 1.87, below what `image` 0.25 already
+# asks.
 jpeg-encoder = { version = "0.7.1", features = ["simd"] }
 fast_image_resize = { version = "6.2.0", default-features = false, features = ["std"] }
 base64 = "0.22"
