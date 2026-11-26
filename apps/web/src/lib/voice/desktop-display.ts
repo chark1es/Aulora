@@ -351,7 +351,7 @@ export interface DisplayStream {
  * fail fifteen times in a quarter of a second, from ending on a brief hiccup.
  */
 const MAX_CONSECUTIVE_FAILURES = 15;
-export const FAILURE_WINDOW_MS = 2_000;
+const FAILURE_WINDOW_MS = 2_000;
 
 /**
  * Failures of one kind in a row. Capture and draw failures are counted apart,

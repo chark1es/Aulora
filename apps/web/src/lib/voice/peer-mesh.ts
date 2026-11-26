@@ -815,8 +815,9 @@ export function applyOpusVoiceParams(sdp: string): string {
 
 /**
  * Video tuning. A screen share keeps the frame rate and gives up resolution in
- * steps instead, and prioritizes resolution so text stays legible; a camera
- * prioritizes framerate. The cap keeps video from starving audio on a thin
+ * steps as viewers are added; under pressure it holds resolution at 15 fps (so
+ * text stays legible) and is `balanced` at 30 and 60 fps. A camera prioritizes
+ * framerate. The cap keeps video from starving audio on a thin
  * uplink.
  */
 function tuneVideoSender(sender: RTCRtpSender, tuning: VideoTuning | null): void {
