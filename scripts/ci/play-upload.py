@@ -117,41 +117,31 @@ def upload(service, package, track, aab, notes, media=media_upload, status="comp
         raise
 
 
+def _status(error):
+    """HTTP status from a googleapiclient HttpError, or None for other errors."""
+    return getattr(getattr(error, "resp", None), "status", None)
+
+
 def is_transient(error):
     """Network and 5xx failures are worth retrying; permanent errors are not."""
     if isinstance(error, (socket.timeout, TimeoutError, ConnectionError, ssl.SSLError)):
         return True
     if "Redirected but the response is missing a Location" in str(error):
         return True
-    try:
-        from googleapiclient.errors import HttpError
-    except ImportError:
-        return False
-    return isinstance(error, HttpError) and error.resp.status in (429, 500, 502, 503, 504)
+    return _status(error) in (429, 500, 502, 503, 504)
 
 
 def is_draft_app(error):
     """True when Play rejects a completed release because the app is a draft."""
-    return "draft app" in str(error)
+    return _status(error) == 400 and "draft app" in str(error)
 
 
-def run_upload(service, package, track, aab, notes):
-    """Retry transient failures, and fall back to a draft release on a new app."""
-    status = "completed"
+def attempt_upload(service, package, track, aab, notes, status):
+    """Upload one release, retrying transient failures for the given status."""
     for attempt in range(1, ATTEMPTS + 1):
         try:
             return upload(service, package, track, aab, notes, status=status)
         except Exception as error:
-            # A draft app only accepts a draft release, so switch once and keep
-            # the retry protection for the fallback attempt.
-            if status == "completed" and is_draft_app(error):
-                print(
-                    "The Play app is still a draft, so the release is created as a "
-                    "draft. Roll it out in Play Console to reach testers.",
-                    file=sys.stderr,
-                )
-                status = "draft"
-                continue
             if attempt == ATTEMPTS or not is_transient(error):
                 raise
             print(
@@ -159,6 +149,21 @@ def run_upload(service, package, track, aab, notes):
                 file=sys.stderr,
             )
             time.sleep(RETRY_DELAY * attempt)
+
+
+def run_upload(service, package, track, aab, notes):
+    """Upload, falling back to a draft release when the Play app is a draft."""
+    try:
+        return attempt_upload(service, package, track, aab, notes, "completed")
+    except Exception as error:
+        if not is_draft_app(error):
+            raise
+        print(
+            "The Play app is still a draft, so the release is created as a draft. "
+            "Roll it out in Play Console to reach testers.",
+            file=sys.stderr,
+        )
+        return attempt_upload(service, package, track, aab, notes, "draft")
 
 
 def main():

@@ -21,6 +21,14 @@ play_upload = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(play_upload)
 
 
+class FakeHttpError(Exception):
+    """Stand-in for googleapiclient.errors.HttpError with a resp.status."""
+
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.resp = types.SimpleNamespace(status=status)
+
+
 def fake_service(version_code=42):
     service = mock.MagicMock()
     edits = service.edits.return_value
@@ -133,6 +141,8 @@ class RetryTests(unittest.TestCase):
                 ValueError("Redirected but the response is missing a Location: header.")
             )
         )
+        self.assertTrue(play_upload.is_transient(FakeHttpError(503, "unavailable")))
+        self.assertFalse(play_upload.is_transient(FakeHttpError(400, "bad request")))
         self.assertFalse(play_upload.is_transient(ValueError("permanent")))
 
     def test_retries_a_transient_failure(self):
@@ -163,10 +173,13 @@ class RetryTests(unittest.TestCase):
     def test_detects_a_draft_app(self):
         self.assertTrue(
             play_upload.is_draft_app(
-                ValueError("Only releases with status draft may be created on draft app.")
+                FakeHttpError(
+                    400, "Only releases with status draft may be created on draft app."
+                )
             )
         )
-        self.assertFalse(play_upload.is_draft_app(ValueError("nope")))
+        self.assertFalse(play_upload.is_draft_app(FakeHttpError(400, "bad request")))
+        self.assertFalse(play_upload.is_draft_app(FakeHttpError(500, "draft app")))
 
     def test_falls_back_to_a_draft_release(self):
         statuses = []
@@ -174,8 +187,8 @@ class RetryTests(unittest.TestCase):
         def fake_upload(*_args, **kwargs):
             statuses.append(kwargs.get("status", "completed"))
             if len(statuses) == 1:
-                raise ValueError(
-                    "Only releases with status draft may be created on draft app."
+                raise FakeHttpError(
+                    400, "Only releases with status draft may be created on draft app."
                 )
             return "42"
 
@@ -185,22 +198,22 @@ class RetryTests(unittest.TestCase):
             )
         self.assertEqual(statuses, ["completed", "draft"])
 
-    def test_retries_a_transient_failure_after_the_draft_fallback(self):
+    def test_retries_the_draft_fallback(self):
         statuses = []
 
-        def fake_upload(*_args, **kwargs):
-            statuses.append(kwargs.get("status", "completed"))
-            if len(statuses) == 1:
-                raise ValueError(
-                    "Only releases with status draft may be created on draft app."
+        def flaky(*_args, **kwargs):
+            statuses.append(kwargs.get("status"))
+            if kwargs.get("status") == "completed":
+                raise FakeHttpError(
+                    400, "Only releases with status draft may be created on draft app."
                 )
-            if len(statuses) == 2:
+            if statuses.count("draft") == 1:
                 raise socket.timeout("read timed out")
             return "42"
 
-        with mock.patch.object(
-            play_upload, "upload", side_effect=fake_upload
-        ), mock.patch.object(play_upload.time, "sleep"):
+        with mock.patch.object(play_upload, "upload", side_effect=flaky), mock.patch.object(
+            play_upload.time, "sleep"
+        ):
             self.assertEqual(
                 play_upload.run_upload(None, "pkg", "alpha", "a.aab", ""), "42"
             )
